@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - WhatsApp Bot Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(45deg, #0a0a0a, #1a1a2e);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 400px;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            font-size: 36px;
+            font-weight: bold;
+            background: linear-gradient(45deg, #00b4db, #0083b0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        .login-subtitle {
+            color: #aaa;
+            font-size: 14px;
+        }
+
+        .login-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            color: #00b4db;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .input-group {
+            position: relative;
+        }
+
+        .input-group i {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #888;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 15px 15px 15px 45px;
+            border: none;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border: 2px solid #00b4db;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(45deg, #00b4db, #0083b0);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.3s;
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            background: linear-gradient(45deg, #0083b0, #00b4db);
+        }
+
+        .login-btn:active {
+            transform: translateY(0);
+        }
+
+        .login-btn.loading {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .error-message {
+            color: #ff6b6b;
+            text-align: center;
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(255, 107, 107, 0.1);
+            border-radius: 8px;
+            display: none;
+            animation: shake 0.5s;
+        }
+
+        .info-box {
+            background: rgba(0, 180, 219, 0.1);
+            border: 1px solid rgba(0, 180, 219, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 13px;
+        }
+
+        .info-box h4 {
+            color: #00b4db;
+            margin-bottom: 5px;
+        }
+
+        .info-box p {
+            color: #aaa;
+            margin-bottom: 5px;
+        }
+
+        .stars {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(2px 2px at 20px 30px, #eee, transparent),
+                radial-gradient(2px 2px at 40px 70px, #fff, transparent);
+            z-index: -1;
+            animation: twinkle 3s infinite alternate;
+        }
+
+        @keyframes twinkle {
+            0% { opacity: 0.3; }
+            100% { opacity: 1; }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        /* Maintenance Mode */
+        .maintenance-mode {
+            display: none;
+            text-align: center;
+            padding: 40px;
+            background: rgba(255, 165, 0, 0.1);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 165, 0, 0.3);
+            margin-bottom: 20px;
+        }
+
+        .maintenance-mode i {
+            font-size: 48px;
+            color: #ffa500;
+            margin-bottom: 15px;
+            display: block;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .maintenance-mode h3 {
+            color: #ffa500;
+            margin-bottom: 10px;
+        }
+
+        .maintenance-mode p {
+            color: #aaa;
+            margin-bottom: 5px;
+        }
+
+        /* Responsive */
+        @media (max-width: 480px) {
+            .login-container {
+                max-width: 100%;
+            }
+            
+            .login-card {
+                padding: 30px 20px;
+            }
+            
+            .logo {
+                font-size: 28px;
+            }
+        }
+
+        /* Forgot password link */
+        .forgot-password {
+            text-align: center;
+            margin-top: 20px;
+            color: #888;
+            font-size: 14px;
+        }
+
+        .forgot-password a {
+            color: #00b4db;
+            text-decoration: none;
+        }
+
+        .forgot-password a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="stars"></div>
+    
+    <div class="login-container">
+        <!-- Maintenance Warning -->
+        <div class="maintenance-mode" id="maintenanceMode">
+            <i class="fas fa-tools"></i>
+            <h3>Under Maintenance</h3>
+            <p id="maintenanceReason"></p>
+            <p id="maintenanceTime" style="color: #ffa500; font-weight: bold; margin-top: 10px;"></p>
+        </div>
+
+        <div class="login-header">
+            <div class="logo">WhatsApp Bot</div>
+            <div class="login-subtitle">Admin Dashboard v2.0</div>
+        </div>
+        
+        <div class="login-card">
+            <div class="form-group">
+                <label class="form-label">Username</label>
+                <div class="input-group">
+                    <i class="fas fa-user"></i>
+                    <input type="text" id="username" class="form-input" placeholder="Enter your username" autocomplete="username">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Password</label>
+                <div class="input-group">
+                    <i class="fas fa-lock"></i>
+                    <input type="password" id="password" class="form-input" placeholder="Enter your password" autocomplete="current-password">
+                </div>
+            </div>
+
+            <button class="login-btn" id="loginBtn" onclick="login()">
+                <i class="fas fa-sign-in-alt"></i>
+                Login
+            </button>
+
+            <div id="errorMessage" class="error-message">
+                Invalid username or password
+            </div>
+
+            <div class="info-box">
+                <h4>Default Admin Account</h4>
+                <p>Username: <strong>admin</strong></p>
+                <p>Password: <strong>admin123</strong></p>
+                <p style="margin-top: 10px; color: #ffa500; font-size: 12px;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Change default password after first login
+                </p>
+            </div>
+
+            <div class="forgot-password">
+                <a href="#" onclick="forgotPassword()">Forgot Password?</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check maintenance status
+        async function checkMaintenance() {
+            try {
+                const response = await fetch('/api/maintenance/status');
+                const data = await response.json();
+                
+                if (data.isMaintenance && data.maintenance) {
+                    const maintenanceMode = document.getElementById('maintenanceMode');
+                    const reason = document.getElementById('maintenanceReason');
+                    const time = document.getElementById('maintenanceTime');
+                    
+                    maintenanceMode.style.display = 'block';
+                    reason.textContent = data.maintenance.reason || 'System maintenance in progress';
+                    
+                    // Calculate time remaining
+                    const endTime = new Date(data.maintenance.end_time);
+                    const now = new Date();
+                    const diff = endTime - now;
+                    
+                    if (diff > 0) {
+                        const hours = Math.floor(diff / (1000 * 60 * 60));
+                        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                        time.textContent = `Ends in ${hours}h ${minutes}m`;
+                    } else {
+                        time.textContent = 'Ending soon...';
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking maintenance:', error);
+            }
+        }
+
+        // Login function
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorMessage = document.getElementById('errorMessage');
+            const loginBtn = document.getElementById('loginBtn');
+            
+            // Clear previous error
+            errorMessage.style.display = 'none';
+            
+            // Validation
+            if (!username || !password) {
+                errorMessage.textContent = 'Please fill in all fields';
+                errorMessage.style.display = 'block';
+                return;
+            }
+            
+            // Show loading state
+            loginBtn.classList.add('loading');
+            loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Logging in...';
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Store user info in localStorage for sidebar
+                    localStorage.setItem('userFullName', data.user.full_name || data.user.username);
+                    localStorage.setItem('userRole', data.user.status);
+                    
+                    // Redirect to dashboard
+                    window.location.href = '/index.html';
+                } else {
+                    errorMessage.textContent = data.message || 'Login failed';
+                    errorMessage.style.display = 'block';
+                    shakeElement(errorMessage);
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                errorMessage.textContent = 'Network error. Please try again.';
+                errorMessage.style.display = 'block';
+                shakeElement(errorMessage);
+            } finally {
+                // Reset button
+                loginBtn.classList.remove('loading');
+                loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Login';
+            }
+        }
+        
+        // Shake animation for error
+        function shakeElement(element) {
+            element.style.animation = 'none';
+            setTimeout(() => {
+                element.style.animation = 'shake 0.5s';
+            }, 10);
+        }
+        
+        // Forgot password function
+        function forgotPassword() {
+            alert('Please contact administrator to reset your password.\n\nTelegram: @admin_support');
+            return false;
+        }
+        
+        // Allow login with Enter key
+        document.getElementById('password').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                login();
+            }
+        });
+        
+        // Focus on username field on load
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('username').focus();
+            checkMaintenance();
+            
+            // Auto-check maintenance every minute
+            setInterval(checkMaintenance, 60000);
+        });
+    </script>
+</body>
+</html>
