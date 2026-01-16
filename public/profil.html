@@ -1,0 +1,1599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile - WhatsApp Bot</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #0a0a0a;
+            color: white;
+            min-height: 100vh;
+            display: flex;
+        }
+
+        /* Maintenance Banner */
+        .maintenance-banner {
+            background: linear-gradient(45deg, #ffa500, #ff8c00);
+            color: white;
+            padding: 15px 20px;
+            text-align: center;
+            font-weight: bold;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 9999;
+            animation: pulse-banner 2s infinite;
+            display: none;
+            box-shadow: 0 2px 10px rgba(255, 165, 0, 0.3);
+        }
+        
+        .maintenance-banner.admin {
+            background: linear-gradient(45deg, #ff416c, #ff4b2b);
+        }
+        
+        @keyframes pulse-banner {
+            0% { opacity: 0.8; }
+            50% { opacity: 1; }
+            100% { opacity: 0.8; }
+        }
+        
+        .maintenance-banner-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .maintenance-banner .warning {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .maintenance-banner .warning i {
+            font-size: 20px;
+        }
+        
+        .maintenance-banner .time {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .maintenance-banner .admin-badge {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 250px;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+            z-index: 1000;
+            transition: all 0.3s ease;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            overflow-y: auto;
+            padding-top: 60px;
+        }
+
+        .sidebar.collapsed {
+            width: 70px;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 250px;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 1001;
+        }
+
+        .sidebar.collapsed .sidebar-header {
+            width: 70px;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            background: linear-gradient(45deg, #00b4db, #0083b0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+
+        .sidebar.collapsed .logo {
+            display: none;
+        }
+
+        .toggle-btn {
+            background: none;
+            border: none;
+            color: #00b4db;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+
+        .toggle-btn:hover {
+            background: rgba(0, 180, 219, 0.1);
+        }
+
+        .nav-menu {
+            padding: 20px 0;
+        }
+
+        .nav-item {
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            color: white;
+            text-decoration: none;
+            transition: all 0.3s;
+            border-left: 3px solid transparent;
+            margin: 5px 0;
+        }
+
+        .nav-item:hover, .nav-item.active {
+            background: rgba(0, 180, 219, 0.1);
+            border-left: 3px solid #00b4db;
+        }
+
+        .nav-item i {
+            width: 24px;
+            margin-right: 15px;
+            font-size: 18px;
+            text-align: center;
+        }
+
+        .sidebar.collapsed .nav-item span {
+            display: none;
+        }
+
+        .sidebar.collapsed .nav-item i {
+            margin-right: 0;
+            width: 100%;
+            text-align: center;
+        }
+
+        .user-profile {
+            padding: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 250px;
+            background: rgba(0, 0, 0, 0.95);
+        }
+
+        .sidebar.collapsed .user-profile {
+            width: 70px;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #00b4db, #0083b0);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .user-info {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .user-name {
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .user-role {
+            font-size: 12px;
+            color: #888;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .sidebar.collapsed .user-info {
+            display: none;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: 250px;
+            transition: margin-left 0.3s ease;
+            min-height: 100vh;
+        }
+
+        .sidebar.collapsed ~ .main-content {
+            margin-left: 70px;
+        }
+
+        .top-nav {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            color: #00b4db;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        /* Profile Styles */
+        .container {
+            padding: 30px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .profile-header {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            margin-bottom: 40px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 30px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .avatar-large {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #00b4db, #0083b0);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 60px;
+            font-weight: bold;
+            color: white;
+            border: 5px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .user-info-large {
+            flex: 1;
+        }
+
+        .user-info-large h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #00b4db, #0083b0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .user-info-large p {
+            color: #aaa;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .user-info-large p i {
+            color: #00b4db;
+            width: 20px;
+        }
+
+        .user-badges {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .badge.admin {
+            background: linear-gradient(45deg, #ff416c, #ff4b2b);
+        }
+
+        .badge.premium {
+            background: linear-gradient(45deg, #f9d423, #ff4e50);
+        }
+
+        .badge.vip {
+            background: linear-gradient(45deg, #00b09b, #96c93d);
+        }
+
+        .badge.free {
+            background: linear-gradient(45deg, #8e9eab, #eef2f3);
+        }
+
+        .profile-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card h3 {
+            color: #00b4db;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card h3 i {
+            font-size: 18px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            align-items: center;
+        }
+
+        .info-item label {
+            color: #00b4db;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .info-item label i {
+            width: 20px;
+            text-align: center;
+        }
+
+        .info-item span {
+            color: white;
+        }
+
+        .stat-chart {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .stat-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .stat-label {
+            width: 100px;
+            color: #00b4db;
+            font-size: 14px;
+        }
+
+        .stat-bar-inner {
+            flex: 1;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .stat-fill {
+            height: 100%;
+            border-radius: 10px;
+            background: linear-gradient(90deg, #00b4db, #0083b0);
+            transition: width 1s ease-in-out;
+        }
+
+        .stat-value {
+            width: 50px;
+            text-align: right;
+            font-weight: bold;
+        }
+
+        .bot-list {
+            list-style: none;
+        }
+
+        .bot-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            margin: 10px 0;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            transition: all 0.3s;
+        }
+
+        .bot-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateX(5px);
+        }
+
+        .bot-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .bot-status {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .bot-status.active {
+            background: #00ff00;
+            box-shadow: 0 0 10px #00ff00;
+        }
+
+        .bot-status.inactive {
+            background: #ff0000;
+            box-shadow: 0 0 10px #ff0000;
+        }
+
+        .bot-status.connecting {
+            background: #ffa500;
+            box-shadow: 0 0 10px #ffa500;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #00b4db, #0083b0);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(45deg, #ff416c, #ff4b2b);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            padding: 30px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 500px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h3 {
+            color: #00b4db;
+            margin: 0;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 28px;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.3s;
+        }
+
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #00b4db;
+            font-weight: bold;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 16px;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border: 2px solid #00b4db;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        /* Subscription Status */
+        .subscription-status {
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        .status-active {
+            background: rgba(0, 255, 0, 0.1);
+            color: #00ff00;
+            border: 1px solid #00ff00;
+        }
+
+        .status-expired {
+            background: rgba(255, 0, 0, 0.1);
+            color: #ff0000;
+            border: 1px solid #ff0000;
+        }
+
+        .status-warning {
+            background: rgba(255, 165, 0, 0.1);
+            color: #ffa500;
+            border: 1px solid #ffa500;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .sidebar.active {
+                transform: translateX(0);
+                width: 100%;
+            }
+            
+            .main-content {
+                margin-left: 0 !important;
+            }
+            
+            .mobile-menu-btn {
+                display: block;
+            }
+            
+            .profile-header {
+                flex-direction: column;
+                text-align: center;
+                padding: 20px;
+            }
+            
+            .profile-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .top-nav {
+                padding: 15px;
+            }
+            
+            .container {
+                padding: 15px;
+            }
+            
+            .maintenance-banner-content {
+                flex-direction: column;
+                gap: 10px;
+                text-align: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .avatar-large {
+                width: 120px;
+                height: 120px;
+                font-size: 48px;
+            }
+            
+            .user-info-large h1 {
+                font-size: 24px;
+            }
+            
+            .btn-group {
+                flex-direction: column;
+            }
+            
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Maintenance Banner -->
+    <div class="maintenance-banner" id="maintenanceBanner">
+        <div class="maintenance-banner-content">
+            <div class="warning">
+                <i class="fas fa-tools"></i>
+                <span>System Under Maintenance</span>
+            </div>
+            <div class="time" id="maintenanceTime"></div>
+            <div class="admin-badge" id="adminBadge" style="display: none;">
+                <i class="fas fa-user-shield"></i> Admin Mode
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">WhatsApp Bot</div>
+            <button class="toggle-btn" id="toggleSidebar">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+        
+        <div class="nav-menu">
+            <a href="index.html" class="nav-item">
+                <i class="fas fa-home"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="sender.html" class="nav-item">
+                <i class="fas fa-paper-plane"></i>
+                <span>Sender Menu</span>
+            </a>
+            <a href="bugmenu.html" class="nav-item">
+                <i class="fas fa-bug"></i>
+                <span>Bug Menu</span>
+            </a>
+            <a href="tools.html" class="nav-item">
+                <i class="fas fa-tools"></i>
+                <span>Tools Menu</span>
+            </a>
+            <a href="profil.html" class="nav-item active">
+                <i class="fas fa-user"></i>
+                <span>Profile Menu</span>
+            </a>
+            <a href="/api/logout" class="nav-item">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
+            </a>
+        </div>
+        
+        <div class="user-profile">
+            <div class="user-avatar" id="sidebarAvatar">
+                A
+            </div>
+            <div class="user-info">
+                <div class="user-name" id="sidebarUsername">Loading...</div>
+                <div class="user-role" id="sidebarRole">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Top Navigation -->
+        <div class="top-nav">
+            <button class="mobile-menu-btn" id="mobileMenuBtn">
+                <i class="fas fa-bars"></i>
+            </button>
+            <h2 style="color: #00b4db; flex: 1; display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-user-circle"></i>
+                My Profile
+            </h2>
+            <div class="notification-bell">
+                <i class="fas fa-bell"></i>
+                <span class="notification-count" id="notificationCount">0</span>
+            </div>
+        </div>
+
+        <!-- Profile Content -->
+        <div class="container">
+            <!-- Profile Header -->
+            <div class="profile-header">
+                <div class="avatar-large" id="userAvatar">
+                    A
+                </div>
+                <div class="user-info-large">
+                    <h1 id="userFullName">Loading...</h1>
+                    <p><i class="fas fa-user"></i> <span id="userUsername">@username</span></p>
+                    <p><i class="fas fa-envelope"></i> <span id="userEmail">Loading...</span></p>
+                    <p><i class="fas fa-phone"></i> <span id="userPhone">Loading...</span></p>
+                    <p><i class="fas fa-calendar-alt"></i> Member since: <span id="userJoinedDate">Loading...</span></p>
+                    <div class="user-badges" id="userBadges">
+                        <!-- Badges will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Grid -->
+            <div class="profile-grid">
+                <!-- Account Information -->
+                <div class="card">
+                    <h3><i class="fas fa-user-circle"></i> Account Information</h3>
+                    <div class="info-item">
+                        <label><i class="fas fa-id-card"></i> User ID:</label>
+                        <span id="infoUserId">Loading...</span>
+                    </div>
+                    <div class="info-item">
+                        <label><i class="fas fa-user-tag"></i> Account Type:</label>
+                        <span id="infoAccountType">Loading...</span>
+                    </div>
+                    <div class="info-item">
+                        <label><i class="fas fa-calendar-times"></i> Expiration Date:</label>
+                        <span id="infoExpiration" class="expired-badge">Loading...</span>
+                    </div>
+                    <div class="info-item">
+                        <label><i class="fas fa-key"></i> API Key:</label>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span id="infoApiKey">••••••••••••••••</span>
+                            <button class="btn btn-secondary" onclick="showApiKey()">
+                                <i class="fas fa-eye"></i> Show
+                            </button>
+                        </div>
+                    </div>
+                    <div class="subscription-status" id="subscriptionStatus">
+                        Loading...
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="openEditModal()">
+                            <i class="fas fa-edit"></i> Edit Profile
+                        </button>
+                        <button class="btn btn-secondary" onclick="changePassword()">
+                            <i class="fas fa-key"></i> Change Password
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Bot Statistics -->
+                <div class="card">
+                    <h3><i class="fas fa-chart-bar"></i> Bot Statistics</h3>
+                    <div class="stat-chart">
+                        <div class="stat-bar">
+                            <span class="stat-label">Bots Active</span>
+                            <div class="stat-bar-inner">
+                                <div class="stat-fill" id="activeBotsFill" style="width: 0%"></div>
+                            </div>
+                            <span class="stat-value" id="activeBotsValue">0/0</span>
+                        </div>
+                        <div class="stat-bar">
+                            <span class="stat-label">Messages Today</span>
+                            <div class="stat-bar-inner">
+                                <div class="stat-fill" id="messagesFill" style="width: 0%"></div>
+                            </div>
+                            <span class="stat-value" id="messagesValue">0</span>
+                        </div>
+                        <div class="stat-bar">
+                            <span class="stat-label">Success Rate</span>
+                            <div class="stat-bar-inner">
+                                <div class="stat-fill" id="successRateFill" style="width: 0%"></div>
+                            </div>
+                            <span class="stat-value" id="successRateValue">0%</span>
+                        </div>
+                        <div class="stat-bar">
+                            <span class="stat-label">Uptime</span>
+                            <div class="stat-bar-inner">
+                                <div class="stat-fill" id="uptimeFill" style="width: 0%"></div>
+                            </div>
+                            <span class="stat-value" id="uptimeValue">0%</span>
+                        </div>
+                    </div>
+                    <div class="info-item">
+                        <label><i class="fas fa-robot"></i> Total Bots:</label>
+                        <span id="totalBots">0</span>
+                    </div>
+                    <div class="info-item">
+                        <label><i class="fas fa-paper-plane"></i> Total Messages:</label>
+                        <span id="totalMessages">0</span>
+                    </div>
+                    <div class="info-item">
+                        <label><i class="fas fa-sign-in-alt"></i> Last Login:</label>
+                        <span id="lastLogin">Never</span>
+                    </div>
+                </div>
+
+                <!-- Active Bots -->
+                <div class="card">
+                    <h3><i class="fas fa-robot"></i> Active Bots</h3>
+                    <ul class="bot-list" id="botList">
+                        <!-- Bots will be populated by JavaScript -->
+                    </ul>
+                    <button class="btn btn-primary" style="margin-top: 15px; width: 100%;" onclick="manageBots()">
+                        <i class="fas fa-cogs"></i> Manage Bots
+                    </button>
+                </div>
+
+                <!-- Subscription Details -->
+                <div class="card">
+                    <h3><i class="fas fa-crown"></i> Subscription Details</h3>
+                    <div class="info-item">
+                        <label><i class="fas fa-gem"></i> Current Plan:</label>
+                        <span id="currentPlan">Loading...</span>
+                    </div>
+                    <div class="info-item">
+                        <label><i class="fas fa-money-bill-wave"></i> Price:</label>
+                        <span id="planPrice">Loading...</span>
+                    </div>
+                    <div class="info-item">
+                        <label><i class="fas fa-calendar-check"></i> Next Billing:</label>
+                        <span id="nextBilling">Loading...</span>
+                    </div>
+                    <div class="info-item">
+                        <label><i class="fas fa-sync-alt"></i> Auto Renew:</label>
+                        <span id="autoRenew">Loading...</span>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="upgradePlan()">
+                            <i class="fas fa-arrow-up"></i> Upgrade Plan
+                        </button>
+                        <button class="btn btn-secondary" onclick="viewBilling()">
+                            <i class="fas fa-receipt"></i> View Billing
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Profile Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Profile</h3>
+                <button class="close-btn" onclick="closeEditModal()">&times;</button>
+            </div>
+            <form id="editProfileForm" onsubmit="saveProfile(event)">
+                <div class="form-group">
+                    <label for="editName">Full Name</label>
+                    <input type="text" id="editName" required>
+                </div>
+                <div class="form-group">
+                    <label for="editEmail">Email Address</label>
+                    <input type="email" id="editEmail" required>
+                </div>
+                <div class="form-group">
+                    <label for="editPhone">Phone Number</label>
+                    <input type="tel" id="editPhone" required>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditModal()">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- API Key Modal -->
+    <div id="apiKeyModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>API Key</h3>
+                <button class="close-btn" onclick="closeApiKeyModal()">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>Your API Key (Keep this secret!)</label>
+                <input type="text" id="fullApiKey" readonly>
+            </div>
+            <div class="form-group">
+                <label for="apiKeyNote">Important Note:</label>
+                <p style="color: #ff6b6b; font-size: 14px; padding: 10px; background: rgba(255, 107, 107, 0.1); border-radius: 5px;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Do not share this key with anyone! This key provides full access to your account.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="copyApiKey()">
+                    <i class="fas fa-copy"></i> Copy Key
+                </button>
+                <button class="btn btn-danger" onclick="regenerateApiKey()">
+                    <i class="fas fa-redo"></i> Regenerate
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Initialize Socket.io
+        const socket = io();
+        
+        // DOM Elements
+        const sidebar = document.getElementById('sidebar');
+        const toggleSidebarBtn = document.getElementById('toggleSidebar');
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const maintenanceBanner = document.getElementById('maintenanceBanner');
+        
+        // Profile Data
+        let userProfile = null;
+        let isAdmin = false;
+        
+        // Toggle sidebar
+        function toggleSidebar() {
+            sidebar.classList.toggle('collapsed');
+            localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+        }
+        
+        // Initialize sidebar state
+        const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+        if (sidebarCollapsed) {
+            sidebar.classList.add('collapsed');
+        }
+        
+        // Event Listeners
+        toggleSidebarBtn.addEventListener('click', toggleSidebar);
+        mobileMenuBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('active');
+        });
+        
+        // Close sidebar when clicking outside on mobile
+        document.addEventListener('click', (event) => {
+            if (window.innerWidth <= 768 && 
+                !sidebar.contains(event.target) && 
+                !mobileMenuBtn.contains(event.target)) {
+                sidebar.classList.remove('active');
+            }
+        });
+        
+        // Load user profile data
+        async function loadUserProfile() {
+            try {
+                showLoading();
+                
+                const response = await fetch('/api/user-profile');
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                userProfile = data;
+                isAdmin = data.status === 'admin';
+                
+                updateProfileDisplay();
+                updateBadges();
+                updateBotsList();
+                updateStatistics();
+                updateSubscriptionStatus();
+                
+                // Update sidebar
+                document.getElementById('sidebarUsername').textContent = data.fullName;
+                document.getElementById('sidebarAvatar').textContent = data.fullName.charAt(0).toUpperCase();
+                document.getElementById('sidebarRole').textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
+                
+                // Check maintenance
+                checkMaintenanceStatus();
+                
+            } catch (error) {
+                console.error('Error loading profile data:', error);
+                showError('Failed to load profile data');
+                
+                // Redirect to login if unauthorized
+                if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+                    setTimeout(() => {
+                        window.location.href = '/login.html';
+                    }, 2000);
+                }
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        // Update profile display
+        function updateProfileDisplay() {
+            if (!userProfile) return;
+            
+            // Update header
+            document.getElementById('userAvatar').textContent = userProfile.fullName.charAt(0).toUpperCase();
+            document.getElementById('userFullName').textContent = userProfile.fullName;
+            document.getElementById('userUsername').textContent = `@${userProfile.username}`;
+            document.getElementById('userEmail').textContent = userProfile.email;
+            document.getElementById('userPhone').textContent = userProfile.phone || 'Not set';
+            document.getElementById('userJoinedDate').textContent = userProfile.joinedDate;
+            
+            // Update account info
+            document.getElementById('infoUserId').
+           // Update subscription info
+            document.getElementById('currentPlan').textContent = userProfile.subscription.plan;
+        document.getElementById('planPrice').textContent = userProfile.subscription.price;
+        document.getElementById('nextBilling').textContent = userProfile.subscription.nextBilling;
+        document.getElementById('autoRenew').textContent = userProfile.subscription.autoRenew ? 'Enabled' : 'Disabled';
+    }
+    
+    // Update user badges
+    function updateBadges() {
+        const badgesContainer = document.getElementById('userBadges');
+        badgesContainer.innerHTML = '';
+        
+        // Add status badge
+        const status = userProfile.status.toLowerCase();
+        let statusBadgeClass = '';
+        
+        if (status === 'admin') {
+            statusBadgeClass = 'admin';
+            badgesContainer.innerHTML += `
+                <div class="badge admin">
+                    <i class="fas fa-user-shield"></i>
+                    <span>Administrator</span>
+                </div>
+            `;
+        } else if (status === 'premium') {
+            statusBadgeClass = 'premium';
+            badgesContainer.innerHTML += `
+                <div class="badge premium">
+                    <i class="fas fa-crown"></i>
+                    <span>Premium User</span>
+                </div>
+            `;
+        } else if (status === 'vip') {
+            statusBadgeClass = 'vip';
+            badgesContainer.innerHTML += `
+                <div class="badge vip">
+                    <i class="fas fa-star"></i>
+                    <span>VIP Member</span>
+                </div>
+            `;
+        } else {
+            statusBadgeClass = 'free';
+            badgesContainer.innerHTML += `
+                <div class="badge free">
+                    <i class="fas fa-user"></i>
+                    <span>Free User</span>
+                </div>
+            `;
+        }
+        
+        // Add additional badges based on user activity
+        if (userProfile.botCount > 0) {
+            badgesContainer.innerHTML += `
+                <div class="badge" style="background: linear-gradient(45deg, #00b4db, #0083b0);">
+                    <i class="fas fa-robot"></i>
+                    <span>${userProfile.botCount} Bots</span>
+                </div>
+            `;
+        }
+        
+        if (userProfile.subscription.plan !== 'Free') {
+            badgesContainer.innerHTML += `
+                <div class="badge" style="background: linear-gradient(45deg, #f9d423, #ff4e50);">
+                    <i class="fas fa-gem"></i>
+                    <span>${userProfile.subscription.plan}</span>
+                </div>
+            `;
+        }
+    }
+    
+    // Update bots list
+    function updateBotsList() {
+        const botList = document.getElementById('botList');
+        botList.innerHTML = '';
+        
+        if (userProfile.bots && userProfile.bots.length > 0) {
+            userProfile.bots.forEach(bot => {
+                const botItem = document.createElement('li');
+                botItem.className = 'bot-item';
+                
+                let statusClass = 'inactive';
+                let statusText = 'Inactive';
+                
+                if (bot.status === 'connected') {
+                    statusClass = 'active';
+                    statusText = 'Active';
+                } else if (bot.status === 'connecting') {
+                    statusClass = 'connecting';
+                    statusText = 'Connecting...';
+                }
+                
+                botItem.innerHTML = `
+                    <div class="bot-info">
+                        <div class="bot-status ${statusClass}"></div>
+                        <span style="font-weight: bold;">${bot.name}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="color: #888; font-size: 14px;">${bot.platform}</span>
+                        <button class="btn btn-secondary" style="padding: 5px 10px; font-size: 12px;" 
+                            onclick="controlBot('${bot.id}', '${bot.status}')">
+                            ${bot.status === 'connected' ? 'Stop' : 'Start'}
+                        </button>
+                    </div>
+                `;
+                
+                botList.appendChild(botItem);
+            });
+        } else {
+            botList.innerHTML = `
+                <li class="bot-item" style="text-align: center; color: #888;">
+                    <i class="fas fa-robot" style="font-size: 24px; margin-bottom: 10px; display: block;"></i>
+                    <span>No bots active</span>
+                </li>
+            `;
+        }
+    }
+    
+    // Update statistics
+    function updateStatistics() {
+        // Update stat bars with animation
+        setTimeout(() => {
+            // Active bots
+            const activeBots = userProfile.bots ? userProfile.bots.filter(b => b.status === 'connected').length : 0;
+            const totalBots = userProfile.bots ? userProfile.bots.length : 0;
+            const activeBotsPercentage = totalBots > 0 ? (activeBots / totalBots) * 100 : 0;
+            
+            document.getElementById('activeBotsFill').style.width = `${activeBotsPercentage}%`;
+            document.getElementById('activeBotsValue').textContent = `${activeBots}/${totalBots}`;
+            document.getElementById('totalBots').textContent = totalBots;
+            
+            // Messages today
+            const messagesToday = userProfile.stats.messagesToday || 0;
+            const maxMessages = userProfile.limits.maxMessages || 1000;
+            const messagesPercentage = (messagesToday / maxMessages) * 100;
+            
+            document.getElementById('messagesFill').style.width = `${Math.min(messagesPercentage, 100)}%`;
+            document.getElementById('messagesValue').textContent = messagesToday;
+            document.getElementById('totalMessages').textContent = userProfile.stats.totalMessages || 0;
+            
+            // Success rate
+            const successRate = userProfile.stats.successRate || 0;
+            document.getElementById('successRateFill').style.width = `${successRate}%`;
+            document.getElementById('successRateValue').textContent = `${successRate}%`;
+            
+            // Uptime
+            const uptime = userProfile.stats.uptime || 0;
+            document.getElementById('uptimeFill').style.width = `${uptime}%`;
+            document.getElementById('uptimeValue').textContent = `${uptime}%`;
+            
+            // Last login
+            document.getElementById('lastLogin').textContent = userProfile.stats.lastLogin || 'Never';
+            
+        }, 100);
+    }
+    
+    // Update subscription status
+    function updateSubscriptionStatus() {
+        const statusElement = document.getElementById('subscriptionStatus');
+        const expirationElement = document.getElementById('infoExpiration');
+        
+        if (!userProfile.subscription) return;
+        
+        const now = new Date();
+        const expiration = new Date(userProfile.subscription.expirationDate);
+        const daysUntilExpiration = Math.ceil((expiration - now) / (1000 * 60 * 60 * 24));
+        
+        // Update expiration badge
+        if (userProfile.subscription.plan === 'Free') {
+            expirationElement.textContent = 'Never';
+            statusElement.className = 'subscription-status status-active';
+            statusElement.innerHTML = '<i class="fas fa-infinity"></i> Free Plan - No Expiration';
+        } else if (daysUntilExpiration > 30) {
+            expirationElement.textContent = userProfile.subscription.expirationDate;
+            statusElement.className = 'subscription-status status-active';
+            statusElement.innerHTML = `<i class="fas fa-check-circle"></i> Active - Expires in ${daysUntilExpiration} days`;
+        } else if (daysUntilExpiration > 7) {
+            expirationElement.textContent = userProfile.subscription.expirationDate;
+            statusElement.className = 'subscription-status status-warning';
+            statusElement.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Expiring in ${daysUntilExpiration} days`;
+        } else if (daysUntilExpiration > 0) {
+            expirationElement.textContent = userProfile.subscription.expirationDate;
+            statusElement.className = 'subscription-status status-warning';
+            statusElement.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Expiring soon! ${daysUntilExpiration} days left`;
+        } else {
+            expirationElement.textContent = 'EXPIRED';
+            expirationElement.style.color = '#ff0000';
+            expirationElement.style.fontWeight = 'bold';
+            statusElement.className = 'subscription-status status-expired';
+            statusElement.innerHTML = '<i class="fas fa-times-circle"></i> Subscription Expired';
+        }
+    }
+    
+    // Check maintenance status
+    function checkMaintenanceStatus() {
+        if (userProfile && isAdmin) {
+            // Show admin maintenance controls
+            maintenanceBanner.className = 'maintenance-banner admin';
+            maintenanceBanner.style.display = 'block';
+            document.getElementById('adminBadge').style.display = 'block';
+            document.getElementById('maintenanceTime').textContent = 'Admin Mode - You can schedule maintenance';
+        }
+    }
+    
+    // Show API key
+    function showApiKey() {
+        const apiKeyModal = document.getElementById('apiKeyModal');
+        const fullApiKey = document.getElementById('fullApiKey');
+        
+        // In a real application, you would fetch the API key from the server
+        // For demo purposes, we'll show a masked version
+        fullApiKey.value = userProfile.apiKey || 'sk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+        apiKeyModal.style.display = 'flex';
+    }
+    
+    // Close API key modal
+    function closeApiKeyModal() {
+        document.getElementById('apiKeyModal').style.display = 'none';
+    }
+    
+    // Copy API key to clipboard
+    function copyApiKey() {
+        const apiKeyInput = document.getElementById('fullApiKey');
+        apiKeyInput.select();
+        apiKeyInput.setSelectionRange(0, 99999); // For mobile devices
+        
+        try {
+            document.execCommand('copy');
+            alert('API key copied to clipboard!');
+        } catch (err) {
+            // Fallback for modern browsers
+            navigator.clipboard.writeText(apiKeyInput.value).then(() => {
+                alert('API key copied to clipboard!');
+            });
+        }
+    }
+    
+    // Regenerate API key
+    async function regenerateApiKey() {
+        if (!confirm('Are you sure you want to regenerate your API key? This will invalidate your current key.')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/regenerate-api-key', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                alert('API key regenerated successfully!');
+                closeApiKeyModal();
+                loadUserProfile(); // Reload profile to get new key
+            } else {
+                throw new Error(data.error || 'Failed to regenerate API key');
+            }
+        } catch (error) {
+            console.error('Error regenerating API key:', error);
+            alert('Failed to regenerate API key: ' + error.message);
+        }
+    }
+    
+    // Open edit modal
+    function openEditModal() {
+        const editModal = document.getElementById('editModal');
+        const editName = document.getElementById('editName');
+        const editEmail = document.getElementById('editEmail');
+        const editPhone = document.getElementById('editPhone');
+        
+        // Populate form with current data
+        editName.value = userProfile.fullName;
+        editEmail.value = userProfile.email;
+        editPhone.value = userProfile.phone || '';
+        
+        editModal.style.display = 'flex';
+    }
+    
+    // Close edit modal
+    function closeEditModal() {
+        document.getElementById('editModal').style.display = 'none';
+    }
+    
+    // Save profile changes
+    async function saveProfile(event) {
+        event.preventDefault();
+        
+        const editName = document.getElementById('editName').value;
+        const editEmail = document.getElementById('editEmail').value;
+        const editPhone = document.getElementById('editPhone').value;
+        
+        try {
+            const response = await fetch('/api/update-profile', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    fullName: editName,
+                    email: editEmail,
+                    phone: editPhone
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                alert('Profile updated successfully!');
+                closeEditModal();
+                loadUserProfile(); // Reload profile data
+            } else {
+                throw new Error(data.error || 'Failed to update profile');
+            }
+        } catch (error) {
+            console.error('Error updating profile:', error);
+            alert('Failed to update profile: ' + error.message);
+        }
+    }
+    
+    // Change password
+    function changePassword() {
+        const newPassword = prompt('Enter new password (min. 8 characters):');
+        
+        if (!newPassword || newPassword.length < 8) {
+            alert('Password must be at least 8 characters long');
+            return;
+        }
+        
+        const confirmPassword = prompt('Confirm new password:');
+        
+        if (newPassword !== confirmPassword) {
+            alert('Passwords do not match!');
+            return;
+        }
+        
+        // In a real application, you would send this to your server
+        alert('Password changed successfully!');
+    }
+    
+    // Control bot
+    function controlBot(botId, currentStatus) {
+        const action = currentStatus === 'connected' ? 'stop' : 'start';
+        
+        if (confirm(`Are you sure you want to ${action} this bot?`)) {
+            // In a real application, you would send this to your server
+            alert(`Bot ${action} command sent!`);
+            
+            // Simulate status change
+            const bot = userProfile.bots.find(b => b.id === botId);
+            if (bot) {
+                bot.status = action === 'start' ? 'connecting' : 'inactive';
+                updateBotsList();
+                
+                // Simulate connection process
+                if (action === 'start') {
+                    setTimeout(() => {
+                        bot.status = 'connected';
+                        updateBotsList();
+                        updateStatistics();
+                    }, 2000);
+                }
+            }
+        }
+    }
+    
+    // Manage bots
+    function manageBots() {
+        // In a real application, this would navigate to a bot management page
+        alert('Bot management feature would open here');
+    }
+    
+    // Upgrade plan
+    function upgradePlan() {
+        // In a real application, this would open a payment/upgrade modal
+        alert('Plan upgrade feature would open here');
+    }
+    
+    // View billing
+    function viewBilling() {
+        // In a real application, this would navigate to a billing page
+        alert('Billing history feature would open here');
+    }
+    
+    // Show loading state
+    function showLoading() {
+        // You could add a loading spinner here
+        document.body.style.cursor = 'wait';
+    }
+    
+    // Hide loading state
+    function hideLoading() {
+        document.body.style.cursor = 'default';
+    }
+    
+    // Show error message
+    function showError(message) {
+        alert('Error: ' + message);
+    }
+    
+    // Real-time updates via Socket.io
+    socket.on('user-updated', (data) => {
+        if (data.userId === userProfile.userId) {
+            loadUserProfile(); // Reload profile data
+        }
+    });
+    
+    socket.on('bot-status-changed', (data) => {
+        // Update bot status in real-time
+        if (userProfile && userProfile.bots) {
+            const bot = userProfile.bots.find(b => b.id === data.botId);
+            if (bot) {
+                bot.status = data.status;
+                updateBotsList();
+                updateStatistics();
+            }
+        }
+    });
+    
+    socket.on('maintenance-started', (data) => {
+        maintenanceBanner.style.display = 'block';
+        maintenanceBanner.className = 'maintenance-banner';
+        document.getElementById('maintenanceTime').textContent = `Estimated time: ${data.duration}`;
+    });
+    
+    socket.on('maintenance-ended', () => {
+        maintenanceBanner.style.display = 'none';
+    });
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        loadUserProfile();
+        
+        // Update notification count (demo)
+        setInterval(() => {
+            const count = Math.floor(Math.random() * 5);
+            document.getElementById('notificationCount').textContent = count;
+        }, 30000);
+        
+        // Simulate real-time updates
+        setInterval(() => {
+            if (userProfile && Math.random() > 0.7) {
+                // Simulate bot status changes
+                if (userProfile.bots && userProfile.bots.length > 0) {
+                    const randomBot = userProfile.bots[Math.floor(Math.random() * userProfile.bots.length)];
+                    const newStatus = Math.random() > 0.5 ? 'connected' : 'inactive';
+                    
+                    socket.emit('bot-status-update', {
+                        botId: randomBot.id,
+                        status: newStatus
+                    });
+                }
+            }
+        }, 10000);
+    });
+</script>
+</html>
