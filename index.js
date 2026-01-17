@@ -1350,40 +1350,22 @@ app.use((err, req, res, next) => {
 });
 
 // =============== PERBAIKAN 8: START SERVER DENGAN 0.0.0.0 ===============
+// =============== FIX: START SERVER UNTUK RAILWAY ===============
 const PORT = process.env.PORT || 3000;
 
-// HARUS gunakan '0.0.0.0' untuk Railway/Cloud Run
-server.listen(PORT, '0.0.0.0', () => {
+// Start server untuk Railway
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`
-    ╔══════════════════════════════════════════════════╗
-    ║           WhatsApp Bot Web Dashboard             ║
-    ╠══════════════════════════════════════════════════╣
-    ║ Server running on port ${PORT}                         ║
-    ║ Access: http://localhost:${PORT}                         ║
-    ║ Health Check: http://localhost:${PORT}/health          ║
-    ║ Database: ${dbType === 'real' ? '✅ Real' : '⚠️  Mock'}                 ║
-    ║ Telegram Bot: ${telegramBot ? '✅ Active' : '❌ Not configured'}          ║
-    ║                                                  ║
-    ║ Default Login:                                   ║
-    ║   Username: admin                                ║
-    ║   Password: admin123                             ║
-    ║                                                  ║
-    ║ Features:                                        ║
-    ║ • WhatsApp Bot Management                        ║
-    ║ • Telegram Admin Commands                        ║
-    ║ • Maintenance Mode                               ║
-    ║ • User Management                                ║
-    ║ • Real-time Statistics                           ║
-    ╚══════════════════════════════════════════════════╝
-    
-    Telegram Commands:
-    /create <username> <password> <expired> <plan> <status>
-    /delete <username>
-    /maintenance <time> <on/off> <reason>
-    /listusers /listplans /liststatus
-    
-    Example:
-    /create john123 password123 30d Premium user
-    /maintenance 2h on "System upgrade"
+    🚀 Server WhatsApp Bot Started!
+    Port: ${PORT}
+    Healthcheck: http://localhost:${PORT}/health
+    Database: ${dbType === 'real' ? 'Real' : 'Mock'}
+    Telegram: ${telegramBot ? 'Active' : 'Not configured'}
     `);
+});
+
+// Juga start HTTP server untuk Socket.io
+const WS_PORT = process.env.WS_PORT || 3001;
+server.listen(WS_PORT, '0.0.0.0', () => {
+    console.log(`⚡ Socket.io server running on port ${WS_PORT}`);
 });
