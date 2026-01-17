@@ -10,47 +10,90 @@ const schedule = require('node-schedule');
 const os = require('os');
 require('dotenv').config();
 
-// =============== ADMIN ID ===============
-const ADMIN_ID = '8443969542'; // Your admin ID
-const ADMIN_USERNAME = 'admin'; // Default admin username
+// =============== ADMIN CONFIGURATION ===============
+const ADMIN_ID = process.env.ADMIN_ID || '8443969542';
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 
-// =============== HEALTHCHECK WAJIB UNTUK RAILWAY ===============
+// =============== RAILWAY CONFIGURATION ===============
+const PORT = process.env.PORT || 3000;
+const NODE_ENV = process.env.NODE_ENV || 'production';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'railway-secret-key-change-in-production';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+
+// =============== CREATE APP ===============
 const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
-// Route healthcheck HARUS di bagian paling atas
+// =============== HEALTHCHECK FOR RAILWAY ===============
 app.get('/health', (req, res) => {
+    const stats = getServerStats();
     res.status(200).json({
         status: 'OK',
         timestamp: new Date().toISOString(),
         service: 'WhatsApp Bot Dashboard',
         uptime: process.uptime(),
-        adminId: ADMIN_ID
+        platform: 'Railway',
+        adminId: ADMIN_ID,
+        version: '1.0.0',
+        serverStats: {
+            memory: stats.memory?.usage || 'N/A',
+            cpu: stats.cpu?.usage || 'N/A',
+            uptime: stats.system?.uptime || 'N/A'
+        }
     });
 });
 
-// =============== STATIC FILES ===============
+// =============== MIDDLEWARE CONFIGURATION ===============
+app.set('trust proxy', 1);
+
+const sessionConfig = {
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: NODE_ENV === 'production',
+        sameSite: NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 24 * 60 * 60 * 1000
+    },
+    store: new session.MemoryStore()
+};
+
+app.use(session(sessionConfig));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static(__dirname));
 
-// =============== MOCK DATABASE JIKA FILE TIDAK ADA ===============
+// =============== DATABASE SETUP ===============
 let db;
-let dbType = 'real';
+let dbType = 'mock';
 
 try {
     if (fs.existsSync('./database.js')) {
         db = require('./database');
         console.log('✅ Loaded real database');
+        dbType = 'real';
+    } else if (fs.existsSync('./database.json')) {
+        const rawData = fs.readFileSync('./database.json');
+        db = JSON.parse(rawData);
+        console.log('✅ Loaded JSON database');
+        dbType = 'json';
     } else {
         throw new Error('Database file not found');
     }
 } catch (error) {
     console.log('⚠️ Using mock database:', error.message);
-    dbType = 'mock';
     
     db = {
         getActiveMaintenance: () => null,
         getUserById: (id) => ({
             id: 1,
-            username: 'admin',
+            username: ADMIN_USERNAME,
             email: 'admin@whatsappbot.com',
             full_name: 'Administrator',
             status: 'admin',
@@ -63,11 +106,11 @@ try {
             telegram_id: ADMIN_ID
         }),
         getUserByUsername: (username) => {
-            if (username === 'admin') {
+            if (username === ADMIN_USERNAME) {
                 return {
                     id: 1,
-                    username: 'admin',
-                    password: bcrypt.hashSync('admin123', 10),
+                    username: ADMIN_USERNAME,
+                    password: bcrypt.hashSync(process.env.ADMIN_PASSWORD || 'admin123', 10),
                     email: 'admin@whatsappbot.com',
                     full_name: 'Administrator',
                     status: 'admin',
@@ -81,8 +124,8 @@ try {
             if (telegramId === ADMIN_ID) {
                 return {
                     id: 1,
-                    username: 'admin',
-                    password: bcrypt.hashSync('admin123', 10),
+                    username: ADMIN_USERNAME,
+                    password: bcrypt.hashSync(process.env.ADMIN_PASSWORD || 'admin123', 10),
                     email: 'admin@whatsappbot.com',
                     full_name: 'Administrator',
                     status: 'admin',
@@ -149,7 +192,7 @@ try {
         getAllUsers: () => [
             {
                 id: 1,
-                username: 'admin',
+                username: ADMIN_USERNAME,
                 email: 'admin@whatsappbot.com',
                 full_name: 'Administrator',
                 status: 'admin',
@@ -171,7 +214,7 @@ try {
     };
 }
 
-// =============== FUNGSI UNTUK STATISTIK SERVER ===============
+// =============== SERVER STATISTICS FUNCTION ===============
 function getServerStats() {
     try {
         const mem = process.memoryUsage();
@@ -182,18 +225,18 @@ function getServerStats() {
         const freeMem = os.freemem();
         const usedMem = totalMem - freeMem;
         
-        // CPU usage calculation
-        let totalIdle = 0, totalTick = 0;
-        cpus.forEach((cpu) => {
-            for (let type in cpu.times) {
-                totalTick += cpu.times[type];
-            }
-            totalIdle += cpu.times.idle;
-        });
+        let cpuUsage = '0.00';
+        if (cpus && cpus.length > 0) {
+            let totalIdle = 0, totalTick = 0;
+            cpus.forEach((cpu) => {
+                for (let type in cpu.times) {
+                    totalTick += cpu.times[type];
+                }
+                totalIdle += cpu.times.idle;
+            });
+            cpuUsage = totalTick > 0 ? ((1 - totalIdle / totalTick) * 100).toFixed(2) : '0.00';
+        }
         
-        const cpuUsage = ((1 - totalIdle / totalTick) * 100).toFixed(2);
-        
-        // Format bytes to human readable
         const formatBytes = (bytes) => {
             if (bytes === 0) return '0 Bytes';
             const k = 1024;
@@ -202,7 +245,6 @@ function getServerStats() {
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         };
         
-        // Format uptime
         const formatUptime = (seconds) => {
             const days = Math.floor(seconds / (3600 * 24));
             const hours = Math.floor((seconds % (3600 * 24)) / 3600);
@@ -220,11 +262,11 @@ function getServerStats() {
         return {
             cpu: {
                 usage: cpuUsage + '%',
-                cores: cpus.length,
-                model: cpus[0]?.model || 'Unknown',
-                load1: load[0].toFixed(2),
-                load5: load[1].toFixed(2),
-                load15: load[2].toFixed(2)
+                cores: cpus ? cpus.length : 0,
+                model: cpus && cpus[0] ? cpus[0].model : 'Unknown',
+                load1: load[0] ? load[0].toFixed(2) : '0.00',
+                load5: load[1] ? load[1].toFixed(2) : '0.00',
+                load15: load[2] ? load[2].toFixed(2) : '0.00'
             },
             memory: {
                 total: formatBytes(totalMem),
@@ -244,16 +286,9 @@ function getServerStats() {
                 nodeVersion: process.version,
                 pid: process.pid
             },
-            network: {
-                interfaces: Object.keys(os.networkInterfaces()).length,
-                host: os.hostname()
-            },
-            process: {
-                uptime: formatUptime(uptime),
-                memory: formatBytes(mem.rss),
-                pid: process.pid,
-                ppid: process.ppid,
-                cwd: process.cwd()
+            railway: {
+                environment: NODE_ENV,
+                port: PORT
             },
             timestamp: new Date().toISOString()
         };
@@ -263,7 +298,9 @@ function getServerStats() {
     }
 }
 
-// =============== FUNGSI UNTUK MENGIRIM PESAN KE ADMIN ===============
+// =============== TELEGRAM BOT SETUP ===============
+let telegramBot = null;
+
 async function sendMessageToAdmin(message) {
     if (!telegramBot) return false;
     
@@ -277,880 +314,261 @@ async function sendMessageToAdmin(message) {
     }
 }
 
-// =============== SINGLE TELEGRAM BOT ===============
-let telegramBot = null;
-
-// Inisialisasi bot Telegram
-try {
-    if (process.env.TELEGRAM_BOT_TOKEN) {
-        const TelegramBot = require('node-telegram-bot-api');
-        
-        // Inisialisasi bot dengan polling
-        telegramBot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, {
-            polling: {
-                interval: 300,
-                autoStart: true,
-                params: {
-                    timeout: 10
-                }
-            }
-        });
-        
-        console.log('🤖 Telegram bot initialized successfully');
-        console.log(`👑 Admin ID: ${ADMIN_ID}`);
-        
-        // Kirim notifikasi startup ke admin
-        setTimeout(async () => {
-            const stats = getServerStats();
-            const startMessage = 
-                `🚀 *Bot Started Successfully!*\n\n` +
-                `🤖 *WhatsApp Bot Dashboard*\n` +
-                `⏰ *Time:* ${moment().format('YYYY-MM-DD HH:mm:ss')}\n` +
-                `🖥️ *Hostname:* ${stats.system.hostname}\n` +
-                `📊 *Memory:* ${stats.memory.usage}\n` +
-                `⚙️ *CPU:* ${stats.cpu.usage}\n` +
-                `🔧 *Admin ID:* ${ADMIN_ID}\n\n` +
-                `✅ Bot is ready to receive commands!`;
-            
-            sendMessageToAdmin(startMessage);
-        }, 3000);
-        
-        // =============== TELEGRAM BOT COMMANDS ===============
-        
-        // Command /start
-        telegramBot.onText(/\/start/, (msg) => {
-            const chatId = msg.chat.id;
-            const userId = msg.from.id;
-            const username = msg.from.username || msg.from.first_name;
-            
-            // Check if user is admin
-            const isAdmin = userId.toString() === ADMIN_ID;
-            
-            let welcomeMessage = `🤖 *WhatsApp Bot Control Panel*\n\n`;
-            welcomeMessage += `Welcome ${username}!\n`;
-            
-            if (isAdmin) {
-                welcomeMessage += `👑 *Status:* Administrator\n\n`;
-                welcomeMessage += `*Available commands:*\n\n`;
-                welcomeMessage += `📝 *User Management*\n`;
-                welcomeMessage += `/createuser <username> <password> <plan> <status> <expired>\n`;
-                welcomeMessage += `/deleteuser <username>\n`;
-                welcomeMessage += `/listusers - Show all users\n\n`;
-                welcomeMessage += `🔧 *Maintenance*\n`;
-                welcomeMessage += `/maintenance <time> <on/off> <reason>\n`;
-                welcomeMessage += `/maintenancestatus - Check maintenance status\n\n`;
-                welcomeMessage += `📊 *Server & Info*\n`;
-                welcomeMessage += `/ping - Server statistics (CPU, RAM, etc.)\n`;
-                welcomeMessage += `/listplans - Show available plans\n`;
-                welcomeMessage += `/liststatus - Show user statuses\n`;
-                welcomeMessage += `/help - Show this message\n\n`;
-                welcomeMessage += `🔔 *Notifications*\n`;
-                welcomeMessage += `/broadcast <message> - Send broadcast to all users\n`;
-                welcomeMessage += `/notify <message> - Send notification to admin\n\n`;
-                welcomeMessage += `*Examples:*\n`;
-                welcomeMessage += `✓ /createuser john123 pass123 Premium user 30d\n`;
-                welcomeMessage += `✓ /maintenance 2h on "System upgrade"\n`;
-                welcomeMessage += `✓ /ping - Check server health\n`;
-                welcomeMessage += `✓ /broadcast "Hello everyone!"`;
-            } else {
-                welcomeMessage += `👤 *Status:* User\n\n`;
-                welcomeMessage += `*Available commands:*\n\n`;
-                welcomeMessage += `/ping - Check server status\n`;
-                welcomeMessage += `/help - Show help message\n\n`;
-                welcomeMessage += `*Contact admin for more features:* @${ADMIN_USERNAME}`;
-            }
-            
-            telegramBot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
-            
-            // Log access
-            console.log(`User ${username} (ID: ${userId}) accessed /start command`);
-        });
-        
-        // Command /help
-        telegramBot.onText(/\/help/, (msg) => {
-            const chatId = msg.chat.id;
-            const userId = msg.from.id;
-            const isAdmin = userId.toString() === ADMIN_ID;
-            
-            if (isAdmin) {
-                telegramBot.sendMessage(chatId, 
-                    `🆘 *Admin Help Center*\n\n` +
-                    `*User Management:*\n` +
-                    `• /createuser - Create new user\n` +
-                    `• /deleteuser - Delete user\n` +
-                    `• /listusers - List all users\n\n` +
-                    `*Maintenance:*\n` +
-                    `• /maintenance - Control maintenance mode\n` +
-                    `• /maintenancestatus - Check status\n\n` +
-                    `*Server Monitoring:*\n` +
-                    `• /ping - Check server statistics\n\n` +
-                    `*Notifications:*\n` +
-                    `• /broadcast - Send message to all users\n` +
-                    `• /notify - Send notification to admin\n\n` +
-                    `*Information:*\n` +
-                    `• /listplans - Show subscription plans\n` +
-                    `• /liststatus - Show user statuses\n\n` +
-                    `*Time Format:*\n` +
-                    `• 30m = 30 minutes\n` +
-                    `• 2h = 2 hours\n` +
-                    `• 1d = 1 day`,
-                    { parse_mode: 'Markdown' }
-                );
-            } else {
-                telegramBot.sendMessage(chatId,
-                    `🆘 *Help Center*\n\n` +
-                    `*Available commands:*\n` +
-                    `• /ping - Check server status\n` +
-                    `• /help - Show this message\n\n` +
-                    `*Need admin access?*\n` +
-                    `Contact @${ADMIN_USERNAME} for assistance.`,
-                    { parse_mode: 'Markdown' }
-                );
-            }
-        });
-        
-        // Command /ping - SERVER STATISTICS
-        telegramBot.onText(/\/ping/, async (msg) => {
-            const chatId = msg.chat.id;
-            const userId = msg.from.id;
-            const username = msg.from.username || msg.from.first_name;
-            const startTime = Date.now();
-            
-            try {
-                // Kirim pesan "Checking..." terlebih dahulu
-                const loadingMsg = await telegramBot.sendMessage(chatId, 
-                    '🔄 *Checking server statistics...*',
-                    { parse_mode: 'Markdown' }
-                );
-                
-                // Dapatkan statistik server
-                const stats = getServerStats();
-                const pingTime = Date.now() - startTime;
-                
-                // Buat pesan statistik
-                let message = `📊 *SERVER STATISTICS*\n\n`;
-                
-                // User info
-                message += `👤 *User:* ${username}\n`;
-                message += `🆔 *ID:* ${userId}\n`;
-                message += `✅ *System Status:* ONLINE\n`;
-                message += `⏱️ *Response Time:* ${pingTime}ms\n`;
-                message += `📅 *Timestamp:* ${moment().format('YYYY-MM-DD HH:mm:ss')}\n\n`;
-                
-                // CPU Information
-                message += `⚙️ *CPU INFORMATION*\n`;
-                message += `   📈 Usage: ${stats.cpu.usage}\n`;
-                message += `   🎯 Cores: ${stats.cpu.cores}\n`;
-                message += `   📊 Load Average: ${stats.cpu.load1}, ${stats.cpu.load5}, ${stats.cpu.load15}\n\n`;
-                
-                // Memory Information
-                message += `💾 *MEMORY USAGE*\n`;
-                message += `   🗃️ Total: ${stats.memory.total}\n`;
-                message += `   📦 Used: ${stats.memory.used} (${stats.memory.usage})\n`;
-                message += `   📭 Free: ${stats.memory.free}\n`;
-                message += `   🧠 Heap: ${stats.memory.heapUsed} / ${stats.memory.heapTotal}\n`;
-                message += `   📄 RSS: ${stats.memory.rss}\n\n`;
-                
-                // System Information
-                message += `🖥️ *SYSTEM INFORMATION*\n`;
-                message += `   🏷️ Platform: ${stats.system.platform}\n`;
-                message += `   🏗️ Architecture: ${stats.system.arch}\n`;
-                message += `   🖥️ Hostname: ${stats.system.hostname}\n`;
-                message += `   📦 Node.js: ${stats.system.nodeVersion}\n\n`;
-                
-                // Uptime Information
-                message += `⏰ *UPTIME*\n`;
-                message += `   🔄 Process: ${stats.system.uptime}\n`;
-                message += `   🖥️ System: ${stats.system.osUptime}\n\n`;
-                
-                // Tampilkan health status berdasarkan penggunaan
-                const cpuUsage = parseFloat(stats.cpu.usage);
-                const memUsage = parseFloat(stats.memory.usage);
-                
-                let healthStatus = '🟢 EXCELLENT';
-                let healthMessage = 'Server is running optimally';
-                
-                if (cpuUsage > 80 || memUsage > 85) {
-                    healthStatus = '🔴 CRITICAL';
-                    healthMessage = 'Server under heavy load';
-                } else if (cpuUsage > 60 || memUsage > 70) {
-                    healthStatus = '🟠 WARNING';
-                    healthMessage = 'Server load is high';
-                } else if (cpuUsage > 40 || memUsage > 50) {
-                    healthStatus = '🟡 MODERATE';
-                    healthMessage = 'Server load is moderate';
-                }
-                
-                message += `📈 *HEALTH STATUS: ${healthStatus}*\n`;
-                message += `💬 ${healthMessage}\n\n`;
-                
-                // Database Status
-                message += `🗄️ *DATABASE STATUS*\n`;
-                message += `   📊 Type: ${dbType === 'real' ? '✅ Real Database' : '⚠️ Mock Database'}\n`;
-                
-                // Bot Status
-                message += `\n🤖 *BOT STATUS*\n`;
-                message += `   Telegram: ✅ Active\n`;
-                message += `   Total Users: ${db.getAllUsers().length}\n`;
-                
-                // Admin status
-                if (userId.toString() === ADMIN_ID) {
-                    message += `   👑 Admin: ✅ You are administrator\n`;
-                }
-                
-                // Maintenance Status
-                const maintenance = db.getActiveMaintenance();
-                if (maintenance) {
-                    const endTime = moment(maintenance.end_time).format('MMM DD, HH:mm');
-                    message += `\n⚠️ *MAINTENANCE ACTIVE*\n`;
-                    message += `   Ends: ${endTime}\n`;
-                    message += `   Reason: ${maintenance.reason || 'Not specified'}`;
-                }
-                
-                // Edit pesan loading dengan hasil
-                await telegramBot.editMessageText(message, {
-                    chat_id: chatId,
-                    message_id: loadingMsg.message_id,
-                    parse_mode: 'Markdown'
-                });
-                
-                // Log ping request
-                console.log(`User ${username} (ID: ${userId}) requested server stats`);
-                
-            } catch (error) {
-                console.error('Telegram ping error:', error);
-                telegramBot.sendMessage(chatId,
-                    '❌ *Error getting server statistics*\n\n' +
-                    'Please try again later.',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-        });
-        
-        // Command /broadcast (Admin only)
-        telegramBot.onText(/\/broadcast (.+)/, async (msg, match) => {
-            const chatId = msg.chat.id;
-            const userId = msg.from.id;
-            
-            // Verifikasi admin
-            if (userId.toString() !== ADMIN_ID) {
-                return telegramBot.sendMessage(chatId, 
-                    '❌ *Access Denied*\n\nOnly administrators can send broadcast messages.',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-            
-            const message = match[1].trim();
-            if (!message) {
-                return telegramBot.sendMessage(chatId,
-                    '❌ *Usage:*\n' +
-                    '`/broadcast <message>`\n\n' +
-                    '*Example:*\n' +
-                    '`/broadcast Server maintenance in 10 minutes`',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-            
-            try {
-                // Kirim broadcast ke semua user yang diketahui
-                const users = db.getAllUsers();
-                let successCount = 0;
-                let failCount = 0;
-                
-                const broadcastMessage = 
-                    `📢 *BROADCAST MESSAGE*\n\n` +
-                    `${message}\n\n` +
-                    `*From:* Administrator\n` +
-                    `*Time:* ${moment().format('YYYY-MM-DD HH:mm:ss')}`;
-                
-                // Kirim ke admin dulu sebagai preview
-                await telegramBot.sendMessage(chatId,
-                    `📤 *Sending broadcast...*\n\n` +
-                    `Message: ${message}\n` +
-                    `Total recipients: ${users.length}`,
-                    { parse_mode: 'Markdown' }
-                );
-                
-                // Kirim ke semua user
-                for (const user of users) {
-                    if (user.telegram_id && user.telegram_id !== ADMIN_ID) {
-                        try {
-                            await telegramBot.sendMessage(user.telegram_id, broadcastMessage, { parse_mode: 'Markdown' });
-                            successCount++;
-                        } catch (error) {
-                            failCount++;
-                            console.error(`Failed to send to user ${user.username}:`, error.message);
-                        }
-                    }
-                }
-                
-                // Report hasil
-                await telegramBot.sendMessage(chatId,
-                    `✅ *Broadcast Complete!*\n\n` +
-                    `📤 Sent to: ${successCount} users\n` +
-                    `❌ Failed: ${failCount} users\n` +
-                    `📊 Success rate: ${((successCount / users.length) * 100).toFixed(1)}%`,
-                    { parse_mode: 'Markdown' }
-                );
-                
-                // Log broadcast
-                console.log(`Admin broadcasted message to ${successCount} users`);
-                
-            } catch (error) {
-                console.error('Telegram broadcast error:', error);
-                telegramBot.sendMessage(chatId,
-                    '❌ *Error sending broadcast*',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-        });
-        
-        // Command /notify (Send notification to admin)
-        telegramBot.onText(/\/notify (.+)/, async (msg, match) => {
-            const chatId = msg.chat.id;
-            const userId = msg.from.id;
-            const username = msg.from.username || msg.from.first_name;
-            const message = match[1].trim();
-            
-            if (!message) {
-                return telegramBot.sendMessage(chatId,
-                    '❌ *Usage:*\n' +
-                    '`/notify <message>`\n\n' +
-                    '*Example:*\n' +
-                    '`/notify Need help with bot configuration`',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-            
-            try {
-                // Kirim notifikasi ke admin
-                const notificationMessage = 
-                    `📩 *NEW NOTIFICATION*\n\n` +
-                    `*From:* ${username}\n` +
-                    `*User ID:* ${userId}\n` +
-                    `*Time:* ${moment().format('YYYY-MM-DD HH:mm:ss')}\n\n` +
-                    `*Message:*\n${message}`;
-                
-                const sent = await sendMessageToAdmin(notificationMessage);
-                
-                if (sent) {
-                    telegramBot.sendMessage(chatId,
-                        `✅ *Notification sent to admin!*\n\n` +
-                        `Your message has been delivered to the administrator.`,
-                        { parse_mode: 'Markdown' }
-                    );
-                } else {
-                    telegramBot.sendMessage(chatId,
-                        '❌ *Failed to send notification*\n\n' +
-                        'Please try again later or contact admin directly.',
-                        { parse_mode: 'Markdown' }
-                    );
-                }
-                
-            } catch (error) {
-                console.error('Telegram notify error:', error);
-                telegramBot.sendMessage(chatId,
-                    '❌ *Error sending notification*',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-        });
-        
-        // Command /createuser (Admin only)
-        telegramBot.onText(/\/createuser (.+)/, async (msg, match) => {
-            const chatId = msg.chat.id;
-            const userId = msg.from.id;
-            
-            // Verifikasi admin
-            if (userId.toString() !== ADMIN_ID) {
-                return telegramBot.sendMessage(chatId, 
-                    '❌ *Access Denied*\n\nOnly administrators can create users.',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-            
-            const args = match[1].split(' ');
-            if (args.length < 5) {
-                return telegramBot.sendMessage(chatId,
-                    '❌ *Usage:*\n' +
-                    '`/createuser <username> <password> <plan> <status> <expired>`\n\n' +
-                    '*Example:*\n' +
-                    '`/createuser john123 pass123 Premium user 30d`\n\n' +
-                    '*Plans:* Free, Premium, VIP\n' +
-                    '*Status:* user, admin',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-            
-            const [username, password, plan, status, expired] = args;
-            
-            try {
-                // Validasi plan
-                const validPlans = db.getAllPlans().map(p => p.name);
-                if (!validPlans.includes(plan)) {
-                    return telegramBot.sendMessage(chatId,
-                        `❌ *Invalid Plan*\n\nAvailable plans: ${validPlans.join(', ')}`,
-                        { parse_mode: 'Markdown' }
-                    );
-                }
-                
-                // Validasi status
-                const validStatuses = db.getAllStatuses().map(s => s.name);
-                if (!validStatuses.includes(status)) {
-                    return telegramBot.sendMessage(chatId,
-                        `❌ *Invalid Status*\n\nAvailable statuses: ${validStatuses.join(', ')}`,
-                        { parse_mode: 'Markdown' }
-                    );
-                }
-                
-                // Cek user sudah ada
-                const existingUser = db.getUserByUsername(username);
-                if (existingUser) {
-                    return telegramBot.sendMessage(chatId,
-                        '❌ *Username already exists*',
-                        { parse_mode: 'Markdown' }
-                    );
-                }
-                
-                // Buat user
-                const userIdResult = db.createUser({
-                    username,
-                    password: bcrypt.hashSync(password, 10),
-                    plan,
-                    status,
-                    expired,
-                    created_by: 1, // Admin ID
-                    email: `${username}@whatsappbot.com`,
-                    full_name: username
-                });
-                
-                // Log audit
-                db.addAuditLog(1, 'TG_CREATE_USER', 
-                    `Created user via Telegram: ${username}`, 
-                    'telegram', 'telegram-bot'
-                );
-                
-                const resultMessage = 
-                    `✅ *User Created Successfully!*\n\n` +
-                    `👤 *Username:* ${username}\n` +
-                    `🔑 *Password:* ${password}\n` +
-                    `📅 *Plan:* ${plan}\n` +
-                    `👑 *Status:* ${status}\n` +
-                    `⏰ *Expires:* ${expired}\n` +
-                    `🆔 *User ID:* ${userIdResult.lastInsertRowid}\n\n` +
-                    `*Created by:* Administrator\n` +
-                    `*Time:* ${moment().format('YYYY-MM-DD HH:mm:ss')}`;
-                
-                telegramBot.sendMessage(chatId, resultMessage, { parse_mode: 'Markdown' });
-                
-                // Kirim notifikasi ke user jika memiliki telegram_id
-                // (Dalam implementasi nyata, Anda perlu mendapatkan telegram_id user)
-                
-            } catch (error) {
-                console.error('Telegram create user error:', error);
-                telegramBot.sendMessage(chatId,
-                    '❌ *Error creating user*\n\nPlease try again later.',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-        });
-        
-        // Command /deleteuser (Admin only)
-        telegramBot.onText(/\/deleteuser (.+)/, async (msg, match) => {
-            const chatId = msg.chat.id;
-            const userId = msg.from.id;
-            
-            // Verifikasi admin
-            if (userId.toString() !== ADMIN_ID) {
-                return telegramBot.sendMessage(chatId,
-                    '❌ *Access Denied*\n\nOnly administrators can delete users.',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-            
-            const username = match[1].trim();
-            
-            try {
-                // Cari user
-                const user = db.getUserByUsername(username);
-                if (!user) {
-                    return telegramBot.sendMessage(chatId,
-                        '❌ *User not found*',
-                        { parse_mode: 'Markdown' }
-                    );
-                }
-                
-                // Tidak boleh menghapus diri sendiri
-                if (user.username === ADMIN_USERNAME) {
-                    return telegramBot.sendMessage(chatId,
-                        '❌ *Cannot delete administrator account*',
-                        { parse_mode: 'Markdown' }
-                    );
-                }
-                
-                // Hapus user
-                db.deleteUser(user.id);
-                
-                // Log audit
-                db.addAuditLog(1, 'TG_DELETE_USER',
-                    `Deleted user via Telegram: ${username}`,
-                    'telegram', 'telegram-bot'
-                );
-                
-                telegramBot.sendMessage(chatId,
-                    `✅ *User Deleted Successfully!*\n\n` +
-                    `👤 *Username:* ${username}\n` +
-                    `🗑️ *Status:* Removed from system\n` +
-                    `*Deleted by:* Administrator\n` +
-                    `*Time:* ${moment().format('YYYY-MM-DD HH:mm:ss')}`,
-                    { parse_mode: 'Markdown' }
-                );
-                
-            } catch (error) {
-                console.error('Telegram delete user error:', error);
-                telegramBot.sendMessage(chatId,
-                    '❌ *Error deleting user*',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-        });
-        
-        // Command /listusers (Admin only)
-        telegramBot.onText(/\/listusers/, async (msg) => {
-            const chatId = msg.chat.id;
-            const userId = msg.from.id;
-            
-            // Verifikasi admin
-            if (userId.toString() !== ADMIN_ID) {
-                return telegramBot.sendMessage(chatId,
-                    '❌ *Access Denied*\n\nOnly administrators can list users.',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-            
-            try {
-                const users = db.getAllUsers();
-                if (!users || users.length === 0) {
-                    return telegramBot.sendMessage(chatId,
-                        '📭 *No users found*',
-                        { parse_mode: 'Markdown' }
-                    );
-                }
-                
-                let message = `📋 *User List (${users.length} users):*\n\n`;
-                
-                users.forEach((user, index) => {
-                    const expiry = user.subscription_expiry 
-                        ? moment(user.subscription_expiry).format('MMM DD, YYYY')
-                        : 'N/A';
-                    
-                    const telegramInfo = user.telegram_id ? `TG: ${user.telegram_id}` : 'No Telegram';
-                    
-                    message += `*${index + 1}. ${user.username}*\n`;
-                    message += `   👑 Status: ${user.status}\n`;
-                    message += `   📅 Plan: ${user.plan}\n`;
-                    message += `   ⏰ Expires: ${expiry}\n`;
-                    message += `   📱 ${telegramInfo}\n`;
-                    message += `   📧 Email: ${user.email || 'N/A'}\n`;
-                    message += `   ---\n`;
-                });
-                
-                // Split message jika terlalu panjang
-                if (message.length > 4000) {
-                    const chunks = message.match(/[\s\S]{1,4000}/g);
-                    for (const chunk of chunks) {
-                        await telegramBot.sendMessage(chatId, chunk, { parse_mode: 'Markdown' });
-                    }
-                } else {
-                    await telegramBot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
-                }
-                
-            } catch (error) {
-                console.error('Telegram list users error:', error);
-                telegramBot.sendMessage(chatId,
-                    '❌ *Error listing users*',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-        });
-        
-        // Command /maintenance (Admin only)
-        telegramBot.onText(/\/maintenance (.+)/, async (msg, match) => {
-            const chatId = msg.chat.id;
-            const userId = msg.from.id;
-            
-            // Verifikasi admin
-            if (userId.toString() !== ADMIN_ID) {
-                return telegramBot.sendMessage(chatId,
-                    '❌ *Access Denied*\n\nOnly administrators can manage maintenance.',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-            
-            const args = match[1].split(' ');
-            if (args.length < 2) {
-                return telegramBot.sendMessage(chatId,
-                    '❌ *Usage:*\n' +
-                    '`/maintenance <time> <on/off> <reason>`\n\n' +
-                    '*Examples:*\n' +
-                    '✓ `/maintenance 2h on "System upgrade"`\n' +
-                    '✓ `/maintenance 30m on "Emergency fix"`\n' +
-                    '✓ `/maintenance 0 off`\n\n' +
-                    '*Time format:* 30m, 2h, 1d',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-            
-            const [time, action] = args;
-            const reason = args.slice(2).join(' ') || 'Scheduled maintenance';
-            
-            if (!['on', 'off'].includes(action.toLowerCase())) {
-                return telegramBot.sendMessage(chatId,
-                    '❌ *Invalid Action*\n\nUse "on" to enable or "off" to disable.',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-            
-            try {
-                if (action === 'on') {
-                    // Parse waktu
-                    let endTime;
-                    if (time.includes('h')) {
-                        const hours = parseInt(time);
-                        endTime = new Date(Date.now() + hours * 60 * 60 * 1000);
-                    } else if (time.includes('d')) {
-                        const days = parseInt(time);
-                        endTime = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-                    } else if (time.includes('m')) {
-                        const minutes = parseInt(time);
-                        endTime = new Date(Date.now() + minutes * 60 * 1000);
-                    } else {
-                        return telegramBot.sendMessage(chatId,
-                            '❌ *Invalid Time Format*\n\nUse: 30m (minutes), 2h (hours), 1d (days)',
-                            { parse_mode: 'Markdown' }
-                        );
-                    }
-                    
-                    // Schedule auto-end
-                    scheduleMaintenanceEnd(endTime);
-                    
-                    // Buat maintenance record
-                    db.createMaintenance({
-                        start_time: new Date().toISOString(),
-                        end_time: endTime.toISOString(),
-                        reason: reason,
-                        created_by: 1 // Admin ID
-                    });
-                    
-                    // Log audit
-                    db.addAuditLog(1, 'TG_MAINTENANCE_ON',
-                        `Maintenance via Telegram until ${endTime.toISOString()}`,
-                        'telegram', 'telegram-bot'
-                    );
-                    
-                    const endTimeStr = moment(endTime).format('YYYY-MM-DD HH:mm:ss');
-                    
-                    telegramBot.sendMessage(chatId,
-                        `⚠️ *Maintenance Mode Activated!*\n\n` +
-                        `🕒 *Ends at:* ${endTimeStr}\n` +
-                        `📝 *Reason:* ${reason}\n` +
-                        `🔒 *Note:* Only admins can access during maintenance.\n\n` +
-                        `*Activated by:* Administrator`,
-                        { parse_mode: 'Markdown' }
-                    );
-                    
-                    // Kirim broadcast tentang maintenance
-                    const broadcastMessage = 
-                        `⚠️ *MAINTENANCE NOTICE*\n\n` +
-                        `The system will undergo maintenance.\n` +
-                        `*Start:* Now\n` +
-                        `*End:* ${endTimeStr}\n` +
-                        `*Reason:* ${reason}\n\n` +
-                        `Please save your work.`;
-                    
-                    // Kirim ke semua user
-                    const users = db.getAllUsers();
-                    for (const user of users) {
-                        if (user.telegram_id && user.telegram_id !== ADMIN_ID) {
-                            try {
-                                await telegramBot.sendMessage(user.telegram_id, broadcastMessage, { parse_mode: 'Markdown' });
-                            } catch (error) {
-                                console.error(`Failed to send maintenance notice to user ${user.username}`);
-                            }
-                        }
-                    }
-                    
-                } else if (action === 'off') {
-                    // Matikan maintenance
-                    const activeMaintenance = db.getActiveMaintenance();
-                    if (activeMaintenance) {
-                        db.endMaintenance(activeMaintenance.id);
-                        
-                        // Log audit
-                        db.addAuditLog(1, 'TG_MAINTENANCE_OFF',
-                            'Maintenance ended via Telegram',
-                            'telegram', 'telegram-bot'
-                        );
-                        
-                        telegramBot.sendMessage(chatId,
-                            '✅ *Maintenance Mode Deactivated!*\n\n' +
-                            '🌐 Website is now accessible to all users.\n\n' +
-                            '*Deactivated by:* Administrator',
-                            { parse_mode: 'Markdown' }
-                        );
-                    } else {
-                        telegramBot.sendMessage(chatId,
-                            'ℹ️ *No active maintenance found*',
-                            { parse_mode: 'Markdown' }
-                        );
-                    }
-                }
-                
-            } catch (error) {
-                console.error('Telegram maintenance error:', error);
-                telegramBot.sendMessage(chatId,
-                    '❌ *Error managing maintenance*',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-        });
-        
-        // Command /maintenancestatus
-        telegramBot.onText(/\/maintenancestatus/, async (msg) => {
-            const chatId = msg.chat.id;
-            
-            try {
-                const maintenance = db.getActiveMaintenance();
-                
-                if (maintenance) {
-                    const startTime = moment(maintenance.start_time).format('YYYY-MM-DD HH:mm:ss');
-                    const endTime = moment(maintenance.end_time).format('YYYY-MM-DD HH:mm:ss');
-                    const timeLeft = moment(maintenance.end_time).fromNow();
-                    
-                    telegramBot.sendMessage(chatId,
-                        `🔧 *Maintenance Status: ACTIVE*\n\n` +
-                        `🕐 *Started:* ${startTime}\n` +
-                        `🕒 *Ends:* ${endTime}\n` +
-                        `⏳ *Time left:* ${timeLeft}\n` +
-                        `📝 *Reason:* ${maintenance.reason || 'Not specified'}\n\n` +
-                        `⚠️ *Only administrators can access during maintenance.*`,
-                        { parse_mode: 'Markdown' }
-                    );
-                } else {
-                    telegramBot.sendMessage(chatId,
-                        '✅ *Maintenance Status: INACTIVE*\n\n' +
-                        '🌐 All services are running normally.',
-                        { parse_mode: 'Markdown' }
-                    );
-                }
-                
-            } catch (error) {
-                console.error('Telegram maintenance status error:', error);
-                telegramBot.sendMessage(chatId,
-                    '❌ *Error checking maintenance status*',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-        });
-        
-        // Command /listplans
-        telegramBot.onText(/\/listplans/, async (msg) => {
-            const chatId = msg.chat.id;
-            
-            try {
-                const plans = db.getAllPlans();
-                
-                let message = '📊 *Available Subscription Plans:*\n\n';
-                
-                plans.forEach((plan, index) => {
-                    message += `*${index + 1}. ${plan.name} Plan*\n`;
-                    message += `   💰 Price: $${plan.price}\n`;
-                    message += `   🤖 Max Bots: ${plan.max_bots}\n`;
-                    message += `   📨 Daily Messages: ${plan.max_messages_per_day.toLocaleString()}\n`;
-                    message += `   ✨ Features: ${plan.features}\n`;
-                    message += `   ---\n`;
-                });
-                
-                telegramBot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
-                
-            } catch (error) {
-                console.error('Telegram list plans error:', error);
-                telegramBot.sendMessage(chatId,
-                    '❌ *Error listing plans*',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-        });
-        
-        // Command /liststatus
-        telegramBot.onText(/\/liststatus/, async (msg) => {
-            const chatId = msg.chat.id;
-            
-            try {
-                const statuses = db.getAllStatuses();
-                
-                let message = '👑 *Available User Statuses:*\n\n';
-                
-                statuses.forEach((status, index) => {
-                    message += `*${index + 1}. ${status.name.toUpperCase()}*\n`;
-                    message += `   📊 Level: ${status.level}\n`;
-                    message += `   🔐 Permissions: ${status.permissions}\n`;
-                    message += `   ---\n`;
-                });
-                
-                telegramBot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
-                
-            } catch (error) {
-                console.error('Telegram list statuses error:', error);
-                telegramBot.sendMessage(chatId,
-                    '❌ *Error listing statuses*',
-                    { parse_mode: 'Markdown' }
-                );
-            }
-        });
-        
-        // Handler untuk semua pesan (logging)
-        telegramBot.on('message', (msg) => {
-            const userId = msg.from.id;
-            const username = msg.from.username || msg.from.first_name;
-            const chatId = msg.chat.id;
-            const text = msg.text || '';
-            
-            // Log semua pesan dari admin
-            if (userId.toString() === ADMIN_ID) {
-                console.log(`👑 Admin ${username} (${userId}): ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}`);
-            }
-        });
-        
-        // Handler untuk error polling
-        telegramBot.on('polling_error', (error) => {
-            console.error('Telegram polling error:', error);
-        });
-        
-        // Handler untuk webhook error
-        telegramBot.on('webhook_error', (error) => {
-            console.error('Telegram webhook error:', error);
-        });
-        
-        console.log('✅ All Telegram bot commands registered');
-        
-    } else {
-        console.log('ℹ️ Telegram bot token not configured in environment variables');
+function initializeTelegramBot() {
+    if (!TELEGRAM_BOT_TOKEN) {
+        console.log('ℹ️ Telegram bot token not configured, bot will be disabled');
+        return;
     }
     
-} catch (error) {
-    console.error('❌ Telegram bot initialization error:', error.message);
-    console.log('ℹ️ Telegram bot will be disabled');
+    try {
+        const TelegramBot = require('node-telegram-bot-api');
+        
+        console.log('🤖 Initializing Telegram bot...');
+        
+        if (NODE_ENV === 'production') {
+            const webhookUrl = process.env.RAILWAY_STATIC_URL || process.env.WEBHOOK_URL;
+            if (webhookUrl) {
+                telegramBot = new TelegramBot(TELEGRAM_BOT_TOKEN);
+                telegramBot.setWebHook(`${webhookUrl}/bot${TELEGRAM_BOT_TOKEN}`);
+                console.log(`✅ Telegram webhook set to: ${webhookUrl}/bot${TELEGRAM_BOT_TOKEN}`);
+                
+                app.post(`/bot${TELEGRAM_BOT_TOKEN}`, (req, res) => {
+                    telegramBot.processUpdate(req.body);
+                    res.sendStatus(200);
+                });
+            } else {
+                console.log('⚠️ Using polling mode (no webhook URL configured)');
+                telegramBot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
+            }
+        } else {
+            telegramBot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
+        }
+        
+        console.log('✅ Telegram bot initialized successfully');
+        
+        setupTelegramBotCommands();
+        
+    } catch (error) {
+        console.error('❌ Telegram bot initialization error:', error.message);
+        telegramBot = null;
+    }
 }
 
-const server = http.createServer(app);
-const io = socketIo(server);
+function setupTelegramBotCommands() {
+    if (!telegramBot) return;
+    
+    telegramBot.onText(/\/start/, (msg) => {
+        const chatId = msg.chat.id;
+        const userId = msg.from.id;
+        const username = msg.from.username || msg.from.first_name;
+        const isAdmin = userId.toString() === ADMIN_ID;
+        
+        let welcomeMessage = `🤖 *WhatsApp Bot Control Panel*\n\n`;
+        welcomeMessage += `Welcome ${username}!\n`;
+        welcomeMessage += `🚂 *Hosted on:* Railway\n\n`;
+        
+        if (isAdmin) {
+            welcomeMessage += `👑 *Status:* Administrator\n\n`;
+            welcomeMessage += `*Available commands:*\n`;
+            welcomeMessage += `/ping - Server statistics\n`;
+            welcomeMessage += `/createuser - Create new user\n`;
+            welcomeMessage += `/deleteuser - Delete user\n`;
+            welcomeMessage += `/listusers - Show all users\n`;
+            welcomeMessage += `/maintenance - Maintenance control\n`;
+            welcomeMessage += `/broadcast - Send broadcast\n`;
+            welcomeMessage += `/help - Show help message`;
+        } else {
+            welcomeMessage += `👤 *Status:* User\n\n`;
+            welcomeMessage += `*Available commands:*\n`;
+            welcomeMessage += `/ping - Check server status\n`;
+            welcomeMessage += `/help - Show help message\n\n`;
+            welcomeMessage += `*Contact admin:* @${ADMIN_USERNAME}`;
+        }
+        
+        telegramBot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
+    });
+    
+    telegramBot.onText(/\/ping/, async (msg) => {
+        const chatId = msg.chat.id;
+        const userId = msg.from.id;
+        const username = msg.from.username || msg.from.first_name;
+        
+        try {
+            const stats = getServerStats();
+            let message = `📊 *SERVER STATISTICS*\n\n`;
+            message += `👤 *User:* ${username}\n`;
+            message += `🚂 *Platform:* Railway\n`;
+            message += `📅 *Timestamp:* ${moment().format('YYYY-MM-DD HH:mm:ss')}\n\n`;
+            message += `⚙️ *CPU:* ${stats.cpu.usage}\n`;
+            message += `💾 *Memory:* ${stats.memory.usage}\n`;
+            message += `⏰ *Uptime:* ${stats.system.uptime}\n\n`;
+            message += `✅ *Status:* ONLINE`;
+            
+            telegramBot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+        } catch (error) {
+            telegramBot.sendMessage(chatId, '❌ Error getting server statistics', { parse_mode: 'Markdown' });
+        }
+    });
+    
+    telegramBot.onText(/\/broadcast (.+)/, async (msg, match) => {
+        const chatId = msg.chat.id;
+        const userId = msg.from.id;
+        
+        if (userId.toString() !== ADMIN_ID) {
+            return telegramBot.sendMessage(chatId, '❌ *Access Denied*', { parse_mode: 'Markdown' });
+        }
+        
+        const message = match[1].trim();
+        if (!message) {
+            return telegramBot.sendMessage(chatId, '❌ *Usage:* /broadcast <message>', { parse_mode: 'Markdown' });
+        }
+        
+        try {
+            const users = db.getAllUsers();
+            let successCount = 0;
+            
+            const broadcastMessage = `📢 *BROADCAST*\n\n${message}\n\n*From:* Admin\n*Time:* ${moment().format('HH:mm')}`;
+            
+            for (const user of users) {
+                if (user.telegram_id && user.telegram_id !== ADMIN_ID) {
+                    try {
+                        await telegramBot.sendMessage(user.telegram_id, broadcastMessage, { parse_mode: 'Markdown' });
+                        successCount++;
+                    } catch (error) {
+                        console.error(`Failed to send to ${user.username}:`, error.message);
+                    }
+                }
+            }
+            
+            telegramBot.sendMessage(chatId, `✅ Broadcast sent to ${successCount} users`, { parse_mode: 'Markdown' });
+        } catch (error) {
+            console.error('Broadcast error:', error);
+            telegramBot.sendMessage(chatId, '❌ Error sending broadcast', { parse_mode: 'Markdown' });
+        }
+    });
+    
+    telegramBot.onText(/\/createuser (.+)/, async (msg, match) => {
+        const chatId = msg.chat.id;
+        const userId = msg.from.id;
+        
+        if (userId.toString() !== ADMIN_ID) {
+            return telegramBot.sendMessage(chatId, '❌ *Access Denied*', { parse_mode: 'Markdown' });
+        }
+        
+        const args = match[1].split(' ');
+        if (args.length < 5) {
+            return telegramBot.sendMessage(chatId, '❌ *Usage:* /createuser <username> <password> <plan> <status> <days>', { parse_mode: 'Markdown' });
+        }
+        
+        const [username, password, plan, status, days] = args;
+        
+        try {
+            const existingUser = db.getUserByUsername(username);
+            if (existingUser) {
+                return telegramBot.sendMessage(chatId, '❌ Username already exists', { parse_mode: 'Markdown' });
+            }
+            
+            const userIdResult = db.createUser({
+                username,
+                password: bcrypt.hashSync(password, 10),
+                plan,
+                status,
+                expired: `${days}d`,
+                created_by: 1,
+                email: `${username}@whatsappbot.com`,
+                full_name: username
+            });
+            
+            telegramBot.sendMessage(chatId, `✅ User ${username} created successfully!`, { parse_mode: 'Markdown' });
+        } catch (error) {
+            console.error('Create user error:', error);
+            telegramBot.sendMessage(chatId, '❌ Error creating user', { parse_mode: 'Markdown' });
+        }
+    });
+    
+    telegramBot.onText(/\/listusers/, async (msg) => {
+        const chatId = msg.chat.id;
+        const userId = msg.from.id;
+        
+        if (userId.toString() !== ADMIN_ID) {
+            return telegramBot.sendMessage(chatId, '❌ *Access Denied*', { parse_mode: 'Markdown' });
+        }
+        
+        try {
+            const users = db.getAllUsers();
+            if (users.length === 0) {
+                return telegramBot.sendMessage(chatId, '📭 No users found', { parse_mode: 'Markdown' });
+            }
+            
+            let message = `📋 *User List (${users.length}):*\n\n`;
+            users.forEach((user, index) => {
+                message += `${index + 1}. *${user.username}*\n`;
+                message += `   Status: ${user.status}\n`;
+                message += `   Plan: ${user.plan}\n`;
+                message += `   ---\n`;
+            });
+            
+            telegramBot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+        } catch (error) {
+            console.error('List users error:', error);
+            telegramBot.sendMessage(chatId, '❌ Error listing users', { parse_mode: 'Markdown' });
+        }
+    });
+    
+    telegramBot.onText(/\/help/, (msg) => {
+        const chatId = msg.chat.id;
+        const userId = msg.from.id;
+        const isAdmin = userId.toString() === ADMIN_ID;
+        
+        if (isAdmin) {
+            telegramBot.sendMessage(chatId, 
+                `🆘 *Admin Help*\n\n` +
+                `*Commands:*\n` +
+                `/start - Start bot\n` +
+                `/ping - Server stats\n` +
+                `/createuser - Create user\n` +
+                `/deleteuser - Delete user\n` +
+                `/listusers - List users\n` +
+                `/broadcast - Send message\n` +
+                `/maintenance - Maintenance\n` +
+                `/help - This message`,
+                { parse_mode: 'Markdown' }
+            );
+        } else {
+            telegramBot.sendMessage(chatId,
+                `🆘 *Help*\n\n` +
+                `/start - Start bot\n` +
+                `/ping - Server status\n` +
+                `/help - This message\n\n` +
+                `Contact @${ADMIN_USERNAME} for admin access.`,
+                { parse_mode: 'Markdown' }
+            );
+        }
+    });
+    
+    telegramBot.on('polling_error', (error) => {
+        console.error('Telegram polling error:', error);
+    });
+    
+    console.log('✅ Telegram bot commands registered');
+}
 
-// =============== KODE LAYANAN UTAMA ===============
+// Initialize bot
+initializeTelegramBot();
 
-// Maintenance middleware
+// =============== GLOBAL MIDDLEWARE ===============
+app.use((req, res, next) => {
+    res.locals.user = req.session.user;
+    next();
+});
+
+// =============== MAINTENANCE MIDDLEWARE ===============
 const checkMaintenance = async (req, res, next) => {
     try {
+        if (req.path === '/health' || req.path.startsWith('/bot')) {
+            return next();
+        }
+        
         const maintenance = db.getActiveMaintenance();
         if (maintenance && !req.path.includes('/api/login') && !req.path.includes('/login.html')) {
             if (req.session.userId) {
@@ -1166,11 +584,10 @@ const checkMaintenance = async (req, res, next) => {
                 <head>
                     <meta charset="UTF-8">
                     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>Maintenance Mode - WhatsApp Bot</title>
+                    <title>Maintenance Mode</title>
                     <style>
-                        * { margin: 0; padding: 0; box-sizing: border-box; }
                         body { 
-                            font-family: 'Arial', sans-serif; 
+                            font-family: Arial, sans-serif; 
                             background: linear-gradient(45deg, #0a0a0a, #1a1a2e); 
                             color: white; 
                             min-height: 100vh; 
@@ -1179,7 +596,7 @@ const checkMaintenance = async (req, res, next) => {
                             align-items: center; 
                             padding: 20px; 
                         }
-                        .maintenance-container { 
+                        .container { 
                             text-align: center; 
                             padding: 40px; 
                             background: rgba(255, 255, 255, 0.05); 
@@ -1189,7 +606,7 @@ const checkMaintenance = async (req, res, next) => {
                             max-width: 600px; 
                             width: 100%; 
                         }
-                        .maintenance-icon { 
+                        .icon { 
                             font-size: 80px; 
                             color: #ffa500; 
                             margin-bottom: 20px; 
@@ -1210,22 +627,18 @@ const checkMaintenance = async (req, res, next) => {
                             margin: 20px 0; 
                             border: 1px solid rgba(255, 165, 0, 0.3); 
                         }
-                        .admin-note { color: #00ff00; font-size: 14px; margin-top: 20px; }
-                        a { color: #00b4db; text-decoration: none; }
-                        a:hover { text-decoration: underline; }
                     </style>
                 </head>
                 <body>
-                    <div class="maintenance-container">
-                        <div class="maintenance-icon">🛠️</div>
+                    <div class="container">
+                        <div class="icon">🛠️</div>
                         <h1>Under Maintenance</h1>
-                        <p>We're currently performing scheduled maintenance to improve our service.</p>
-                        <div class="countdown" id="countdown">Expected to be back ${maintenanceEnd}</div>
+                        <p>We're currently performing scheduled maintenance.</p>
+                        <div class="countdown" id="countdown">Back ${maintenanceEnd}</div>
                         <div class="reason">
-                            <strong>Reason:</strong> ${maintenance.reason || 'System upgrade and optimization'}
+                            <strong>Reason:</strong> ${maintenance.reason || 'System upgrade'}
                         </div>
                         <p>Thank you for your patience.</p>
-                        <div class="admin-note" id="adminNote"></div>
                     </div>
                     <script>
                         function updateCountdown() {
@@ -1262,22 +675,7 @@ const checkMaintenance = async (req, res, next) => {
 
 app.use(checkMaintenance);
 
-// Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Session middleware
-app.use(session({
-    secret: process.env.SESSION_SECRET || 'your-secret-key-change-this',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 24 * 60 * 60 * 1000
-    }
-}));
-
-// Authentication middleware
+// =============== AUTHENTICATION MIDDLEWARE ===============
 const requireAuth = (req, res, next) => {
     if (req.session && req.session.userId) {
         db.updateLastLogin(req.session.userId);
@@ -1286,7 +684,6 @@ const requireAuth = (req, res, next) => {
     res.redirect('/login.html');
 };
 
-// Admin middleware
 const requireAdmin = (req, res, next) => {
     if (req.session && req.session.userId) {
         const user = db.getUserById(req.session.userId);
@@ -1297,13 +694,7 @@ const requireAdmin = (req, res, next) => {
     res.status(403).json({ error: 'Admin access required' });
 };
 
-// Global variable for template
-app.use((req, res, next) => {
-    res.locals.user = req.session.user;
-    next();
-});
-
-// Routes
+// =============== ROUTES ===============
 app.get('/', (req, res) => {
     if (req.session.userId) {
         res.redirect('/index.html');
@@ -1312,7 +703,6 @@ app.get('/', (req, res) => {
     }
 });
 
-// Bypass maintenance for admins
 app.get('/api/bypass-maintenance', requireAuth, (req, res) => {
     const user = db.getUserById(req.session.userId);
     if (user && user.status === 'admin') {
@@ -1323,7 +713,6 @@ app.get('/api/bypass-maintenance', requireAuth, (req, res) => {
     }
 });
 
-// API Routes - Authentication
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     try {
@@ -1342,14 +731,12 @@ app.post('/api/login', async (req, res) => {
             db.addAuditLog(user.id, 'LOGIN', 'User logged in', req.ip, req.headers['user-agent']);
             db.updateLastLogin(user.id);
             
-            // Kirim notifikasi ke admin jika user login
             if (telegramBot && user.username !== ADMIN_USERNAME) {
                 const loginMessage = 
-                    `🔐 *User Login Alert*\n\n` +
+                    `🔐 *User Login*\n\n` +
                     `*User:* ${user.username}\n` +
-                    `*Time:* ${moment().format('YYYY-MM-DD HH:mm:ss')}\n` +
-                    `*IP:* ${req.ip}\n` +
-                    `*Status:* ${user.status}`;
+                    `*Time:* ${moment().format('HH:mm:ss')}\n` +
+                    `*IP:* ${req.ip}`;
                 
                 sendMessageToAdmin(loginMessage);
             }
@@ -1372,7 +759,6 @@ app.get('/api/logout', (req, res) => {
     res.redirect('/login.html');
 });
 
-// API Routes - User Profile
 app.get('/api/user-profile', requireAuth, async (req, res) => {
     try {
         const userId = req.session.userId;
@@ -1446,7 +832,6 @@ app.post('/api/update-profile', requireAuth, (req, res) => {
     }
 });
 
-// API Routes - Admin Management
 app.get('/api/admin/users', requireAdmin, (req, res) => {
     try {
         const users = db.getAllUsers();
@@ -1479,7 +864,7 @@ app.post('/api/admin/create-user', requireAdmin, (req, res) => {
         
         const userId = db.createUser({
             username,
-            password,
+            password: bcrypt.hashSync(password, 10),
             email,
             full_name,
             phone,
@@ -1524,7 +909,6 @@ app.post('/api/admin/delete-user', requireAdmin, (req, res) => {
     }
 });
 
-// API Routes - Maintenance
 app.get('/api/maintenance/status', (req, res) => {
     try {
         const maintenance = db.getActiveMaintenance();
@@ -1575,17 +959,13 @@ app.post('/api/admin/maintenance', requireAdmin, (req, res) => {
                 created_by: createdBy
             });
             
-            db.addAuditLog(createdBy, 'MAINTENANCE_ON', `Maintenance scheduled until ${endTime.toISOString()}`, req.ip, req.headers['user-agent']);
+            db.addAuditLog(createdBy, 'MAINTENANCE_ON', `Maintenance until ${endTime.toISOString()}`, req.ip, req.headers['user-agent']);
             
-            // Kirim notifikasi ke Telegram admin
             if (telegramBot) {
                 const maintenanceMessage = 
                     `🔧 *Maintenance Started*\n\n` +
-                    `*Type:* Web Dashboard\n` +
-                    `*Started:* ${new Date().toISOString()}\n` +
                     `*Ends:* ${endTime.toISOString()}\n` +
-                    `*Reason:* ${reason || 'Scheduled maintenance'}\n` +
-                    `*By:* User ID ${createdBy}`;
+                    `*Reason:* ${reason || 'Scheduled maintenance'}`;
                 
                 sendMessageToAdmin(maintenanceMessage);
             }
@@ -1595,16 +975,10 @@ app.post('/api/admin/maintenance', requireAdmin, (req, res) => {
             const activeMaintenance = db.getActiveMaintenance();
             if (activeMaintenance) {
                 db.endMaintenance(activeMaintenance.id);
-                db.addAuditLog(createdBy, 'MAINTENANCE_OFF', 'Maintenance mode ended manually', req.ip, req.headers['user-agent']);
+                db.addAuditLog(createdBy, 'MAINTENANCE_OFF', 'Maintenance ended', req.ip, req.headers['user-agent']);
                 
-                // Kirim notifikasi ke Telegram admin
                 if (telegramBot) {
-                    const maintenanceMessage = 
-                        `✅ *Maintenance Ended*\n\n` +
-                        `*Ended:* ${new Date().toISOString()}\n` +
-                        `*By:* User ID ${createdBy}`;
-                    
-                    sendMessageToAdmin(maintenanceMessage);
+                    sendMessageToAdmin('✅ *Maintenance Ended*');
                 }
                 
                 res.json({ success: true, message: 'Maintenance mode deactivated' });
@@ -1612,7 +986,7 @@ app.post('/api/admin/maintenance', requireAdmin, (req, res) => {
                 res.json({ success: false, message: 'No active maintenance found' });
             }
         } else {
-            res.json({ success: false, message: 'Invalid action. Use "on" or "off"' });
+            res.json({ success: false, message: 'Invalid action' });
         }
     } catch (error) {
         console.error('Maintenance error:', error);
@@ -1620,7 +994,6 @@ app.post('/api/admin/maintenance', requireAdmin, (req, res) => {
     }
 });
 
-// API Routes - Plans & Statuses
 app.get('/api/plans', (req, res) => {
     try {
         const plans = db.getAllPlans();
@@ -1641,7 +1014,6 @@ app.get('/api/statuses', (req, res) => {
     }
 });
 
-// API Routes - Dashboard
 app.get('/api/dashboard-data', requireAuth, (req, res) => {
     try {
         const userId = req.session.userId;
@@ -1669,8 +1041,6 @@ app.get('/api/dashboard-data', requireAuth, (req, res) => {
             server: {
                 status: 'active',
                 uptime: process.uptime(),
-                memory: process.memoryUsage(),
-                cpu: process.cpuUsage(),
                 maintenance: !!maintenance
             },
             statistics: {
@@ -1694,7 +1064,6 @@ app.get('/api/dashboard-data', requireAuth, (req, res) => {
     }
 });
 
-// API Routes - Bot Management
 app.post('/api/bot/connect', requireAuth, (req, res) => {
     try {
         const userId = req.session.userId;
@@ -1711,47 +1080,38 @@ app.post('/api/bot/connect', requireAuth, (req, res) => {
         const result = db.createBot(userId, phoneNumber);
         const pairingCode = `QR-${phoneNumber}-${Date.now().toString(36).toUpperCase()}`;
         
-        db.addAuditLog(userId, 'BOT_CONNECT', `Initiated bot connection for ${phoneNumber}`, req.ip, req.headers['user-agent']);
+        db.addAuditLog(userId, 'BOT_CONNECT', `Connected bot: ${phoneNumber}`, req.ip, req.headers['user-agent']);
         
-        // Kirim notifikasi ke admin
         if (telegramBot) {
             const user = db.getUserById(userId);
             const botMessage = 
-                `🤖 *New Bot Connection*\n\n` +
+                `🤖 *Bot Connected*\n\n` +
                 `*User:* ${user.username}\n` +
                 `*Phone:* ${phoneNumber}\n` +
-                `*Time:* ${moment().format('YYYY-MM-DD HH:mm:ss')}\n` +
-                `*Pairing Code:* ${pairingCode}`;
+                `*Code:* ${pairingCode}`;
             
             sendMessageToAdmin(botMessage);
         }
         
-        res.json({ success: true, botId: result.lastInsertRowid, pairingCode: pairingCode, message: 'Bot connection initiated' });
+        res.json({ success: true, botId: result.lastInsertRowid, pairingCode: pairingCode });
     } catch (error) {
         console.error('Bot connect error:', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
     }
 });
 
-// Function to schedule maintenance end
-function scheduleMaintenanceEnd(endTime) {
-    const job = schedule.scheduleJob(endTime, function() {
-        console.log('Maintenance auto-ended at', new Date());
-        
-        // Kirim notifikasi ke admin saat maintenance selesai
-        if (telegramBot) {
-            const message = 
-                `✅ *Maintenance Auto-Completed*\n\n` +
-                `*Ended:* ${new Date().toISOString()}\n` +
-                `*Note:* Scheduled maintenance has completed automatically.`;
-            
-            sendMessageToAdmin(message);
+app.get('*.html', (req, res) => {
+    const filePath = path.join(__dirname, req.path);
+    fs.access(filePath, fs.constants.F_OK, (err) => {
+        if (err) {
+            res.redirect('/index.html');
+        } else {
+            res.sendFile(filePath);
         }
     });
-    console.log('Maintenance auto-end scheduled for', endTime);
-}
+});
 
-// WebSocket connection
+// =============== WEBSOCKET ===============
 io.on('connection', (socket) => {
     console.log('New client connected');
     
@@ -1771,19 +1131,7 @@ io.on('connection', (socket) => {
     });
 });
 
-// Handle semua file HTML
-app.get('*.html', (req, res) => {
-    const filePath = path.join(__dirname, req.path);
-    fs.access(filePath, fs.constants.F_OK, (err) => {
-        if (err) {
-            res.redirect('/index.html');
-        } else {
-            res.sendFile(filePath);
-        }
-    });
-});
-
-// 404 Handler
+// =============== ERROR HANDLERS ===============
 app.use((req, res) => {
     res.status(404).send(`
         <!DOCTYPE html>
@@ -1826,7 +1174,6 @@ app.use((req, res) => {
     `);
 });
 
-// Error handling middleware
 app.use((err, req, res, next) => {
     console.error('Server Error:', err.stack);
     res.status(500).send(`
@@ -1870,15 +1217,48 @@ app.use((err, req, res, next) => {
     `);
 });
 
-// =============== START SERVER ===============
-const PORT = process.env.PORT || 3000;
-const expressServer = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`✅ WhatsApp Bot Dashboard running on port ${PORT}`);
-    console.log(`✅ Healthcheck: http://0.0.0.0:${PORT}/health`);
-    console.log(`✅ Admin ID: ${ADMIN_ID}`);
-    console.log(`✅ Telegram Bot: ${telegramBot ? 'Active' : 'Disabled'}`);
-    console.log(`✅ Server Stats: Available via /ping command`);
-});
+// =============== MAINTENANCE SCHEDULER ===============
+function scheduleMaintenanceEnd(endTime) {
+    const job = schedule.scheduleJob(endTime, function() {
+        console.log('Maintenance auto-ended at', new Date());
+        
+        if (telegramBot) {
+            const message = `✅ *Maintenance Auto-Completed*\n\n*Time:* ${new Date().toISOString()}`;
+            sendMessageToAdmin(message);
+        }
+    });
+    console.log('Maintenance auto-end scheduled for', endTime);
+}
 
-// Attach Socket.io ke server Express
-io.attach(expressServer);
+// =============== START SERVER ===============
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`
+========================================
+🚀 WhatsApp Bot Dashboard Started!
+========================================
+✅ Port: ${PORT}
+✅ Environment: ${NODE_ENV}
+✅ Healthcheck: http://0.0.0.0:${PORT}/health
+✅ Admin ID: ${ADMIN_ID}
+✅ Telegram Bot: ${telegramBot ? 'Active' : 'Disabled'}
+✅ Database Type: ${dbType}
+✅ Railway Hosting: Active
+========================================
+    `);
+    
+    if (telegramBot) {
+        setTimeout(async () => {
+            const stats = getServerStats();
+            const startMessage = 
+                `🚀 *Bot Started on Railway!*\n\n` +
+                `🤖 WhatsApp Bot Dashboard\n` +
+                `🚂 Platform: Railway\n` +
+                `🌐 Environment: ${NODE_ENV}\n` +
+                `📊 Memory: ${stats.memory.usage}\n` +
+                `⚙️ CPU: ${stats.cpu.usage}\n` +
+                `✅ Status: Online`;
+            
+            sendMessageToAdmin(startMessage);
+        }, 3000);
+    }
+});
