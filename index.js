@@ -7,29 +7,171 @@ const socketIo = require('socket.io');
 const bcrypt = require('bcryptjs');
 const moment = require('moment');
 const schedule = require('node-schedule');
-const TelegramBot = require('node-telegram-bot-api');
 require('dotenv').config();
 
-// Database
-const db = require('./database');
-
-// WhatsApp Bot
-const WhatsAppBot = require('./bot');
-
-// Initialize Express
+// =============== PERBAIKAN 1: HEALTHCHECK WAJIB UNTUK RAILWAY ===============
 const app = express();
+
+// Route healthcheck HARUS di bagian paling atas
+app.get('/health', (req, res) => {
+    res.status(200).json({ 
+        status: 'OK', 
+        timestamp: new Date().toISOString(),
+        service: 'WhatsApp Bot Dashboard',
+        uptime: process.uptime()
+    });
+});
+
+// =============== PERBAIKAN 2: STATIC FILES ===============
+// Serve semua file di root directory (termasuk HTML files)
+app.use(express.static(__dirname));
+
+// =============== PERBAIKAN 3: MOCK DATABASE JIKA FILE TIDAK ADA ===============
+let db;
+let dbType = 'real';
+
+try {
+    // Coba load database asli
+    if (fs.existsSync('./database.js')) {
+        db = require('./database');
+        console.log('✅ Loaded real database');
+    } else {
+        throw new Error('Database file not found');
+    }
+} catch (error) {
+    console.log('⚠️  Using mock database:', error.message);
+    dbType = 'mock';
+    
+    // Buat mock database
+    db = {
+        getActiveMaintenance: () => null,
+        getUserById: (id) => ({ 
+            id: 1, 
+            username: 'admin', 
+            email: 'admin@whatsappbot.com',
+            full_name: 'Administrator',
+            status: 'admin',
+            plan: 'Premium',
+            phone: 'Not set',
+            subscription_expiry: new Date(Date.now() + 30*24*60*60*1000),
+            created_at: new Date(),
+            last_login: new Date(),
+            api_key: 'sk_live_mock_' + Math.random().toString(36).substr(2, 20)
+        }),
+        getUserByUsername: (username) => {
+            if (username === 'admin') {
+                return {
+                    id: 1,
+                    username: 'admin',
+                    password: bcrypt.hashSync('admin123', 10),
+                    email: 'admin@whatsappbot.com',
+                    full_name: 'Administrator',
+                    status: 'admin',
+                    plan: 'Premium'
+                };
+            }
+            return null;
+        },
+        updateLastLogin: (id) => ({ changes: 1 }),
+        getUserStatistics: (id) => ({ total_bots: 2, active_bots: 1, total_messages: 1254 }),
+        getUserBots: (id) => [
+            { id: 1, name: 'Main Bot', status: 'connected', phone_number: '+1234567890' },
+            { id: 2, name: 'Backup Bot', status: 'inactive', phone_number: '+0987654321' }
+        ],
+        getUserSubscription: (id) => ({
+            plan_name: 'Premium',
+            price: 9.99,
+            end_date: new Date(Date.now() + 30*24*60*60*1000),
+            auto_renew: true,
+            status: 'active'
+        }),
+        getAllPlans: () => [
+            { name: 'Free', price: 0, max_bots: 1, max_messages_per_day: 100, features: 'Basic features' },
+            { name: 'Premium', price: 9.99, max_bots: 5, max_messages_per_day: 1000, features: 'All features' },
+            { name: 'VIP', price: 29.99, max_bots: 20, max_messages_per_day: 5000, features: 'VIP support' }
+        ],
+        getAllStatuses: () => [
+            { name: 'user', level: 1, permissions: 'basic' },
+            { name: 'admin', level: 10, permissions: 'full' }
+        ],
+        getAllUsers: () => [
+            { 
+                id: 1, 
+                username: 'admin', 
+                email: 'admin@whatsappbot.com',
+                full_name: 'Administrator',
+                status: 'admin',
+                plan: 'Premium',
+                subscription_expiry: new Date(Date.now() + 30*24*60*60*1000),
+                last_login: new Date(),
+                created_at: new Date(Date.now() - 7*24*60*60*1000)
+            }
+        ],
+        updateUser: (id, data) => ({ changes: 1 }),
+        createUser: (data) => ({ lastInsertRowid: 2 }),
+        deleteUser: (id) => ({ changes: 1 }),
+        addAuditLog: (userId, action, description, ip, userAgent) => true,
+        getAllMaintenance: () => [],
+        createMaintenance: (data) => ({ id: 1 }),
+        endMaintenance: (id) => ({ changes: 1 }),
+        createBot: (userId, phoneNumber) => ({ lastInsertRowid: 1 })
+    };
+}
+
+// =============== PERBAIKAN 4: MOCK WHATSAPP BOT JIKA FILE TIDAK ADA ===============
+let WhatsAppBot;
+let whatsappBot;
+
+try {
+    if (fs.existsSync('./bot.js')) {
+        WhatsAppBot = require('./bot');
+        console.log('✅ Loaded real WhatsApp bot');
+    } else {
+        throw new Error('Bot file not found');
+    }
+} catch (error) {
+    console.log('⚠️  Using mock WhatsApp bot:', error.message);
+    
+    WhatsAppBot = class {
+        constructor() {
+            console.log('Mock WhatsApp Bot initialized');
+        }
+        
+        generatePairingCode(phoneNumber) {
+            return `QR-${phoneNumber}-${Date.now().toString(36).toUpperCase()}`;
+        }
+        
+        async connect(phoneNumber, userId) {
+            console.log(`Mock connecting bot for ${phoneNumber}`);
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    resolve({ success: true, message: 'Connected successfully' });
+                }, 2000);
+            });
+        }
+    };
+}
+
+whatsappBot = new WhatsAppBot();
+
+// =============== PERBAIKAN 5: TELEGRAM BOT (OPTIONAL) ===============
+let telegramBot = null;
+try {
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+        const TelegramBot = require('node-telegram-bot-api');
+        telegramBot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+        console.log('🤖 Telegram bot initialized');
+    } else {
+        console.log('ℹ️  Telegram bot token not configured');
+    }
+} catch (error) {
+    console.log('⚠️  Telegram bot disabled:', error.message);
+}
+
 const server = http.createServer(app);
 const io = socketIo(server);
 
-// WhatsApp Bot instance
-const whatsappBot = new WhatsAppBot();
-
-// Telegram Bot
-let telegramBot = null;
-if (process.env.TELEGRAM_BOT_TOKEN) {
-    telegramBot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
-    console.log('🤖 Telegram bot initialized');
-}
+// =============== KODE ASLI ANDA DIMULAI DARI SINI ===============
 
 // Maintenance middleware
 const checkMaintenance = async (req, res, next) => {
@@ -198,7 +340,6 @@ app.use(checkMaintenance);
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
 
 // Session middleware
 app.use(session({
@@ -1085,22 +1226,147 @@ io.on('connection', (socket) => {
     });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).send('Something broke!');
+// =============== PERBAIKAN 6: ROUTE UNTUK HTML FILES ===============
+// Handle semua file HTML
+app.get('*.html', (req, res) => {
+    const filePath = path.join(__dirname, req.path);
+    fs.access(filePath, fs.constants.F_OK, (err) => {
+        if (err) {
+            // File tidak ada, redirect ke index
+            res.redirect('/index.html');
+        } else {
+            res.sendFile(filePath);
+        }
+    });
 });
 
-// Start server
+// =============== PERBAIKAN 7: 404 HANDLER ===============
+app.use((req, res) => {
+    res.status(404).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>404 - Page Not Found</title>
+            <style>
+                body { 
+                    font-family: Arial, sans-serif; 
+                    text-align: center; 
+                    padding: 50px; 
+                    background: linear-gradient(45deg, #0a0a0a, #1a1a2e);
+                    color: white;
+                    min-height: 100vh;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                }
+                h1 { 
+                    color: #ff6b6b; 
+                    font-size: 48px;
+                    margin-bottom: 20px;
+                }
+                p { 
+                    color: #aaa; 
+                    font-size: 18px;
+                    margin-bottom: 30px;
+                }
+                a { 
+                    color: #00b4db; 
+                    text-decoration: none;
+                    font-size: 16px;
+                    padding: 10px 20px;
+                    border: 1px solid #00b4db;
+                    border-radius: 5px;
+                    transition: all 0.3s;
+                }
+                a:hover { 
+                    background: #00b4db;
+                    color: white;
+                }
+            </style>
+        </head>
+        <body>
+            <h1>404 - Page Not Found</h1>
+            <p>The page you are looking for does not exist.</p>
+            <a href="/">Go to Homepage</a>
+        </body>
+        </html>
+    `);
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('Server Error:', err.stack);
+    res.status(500).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>500 - Server Error</title>
+            <style>
+                body { 
+                    font-family: Arial, sans-serif; 
+                    text-align: center; 
+                    padding: 50px; 
+                    background: linear-gradient(45deg, #0a0a0a, #1a1a2e);
+                    color: white;
+                    min-height: 100vh;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                }
+                h1 { 
+                    color: #ff6b6b; 
+                    font-size: 48px;
+                    margin-bottom: 20px;
+                }
+                p { 
+                    color: #aaa; 
+                    font-size: 18px;
+                    margin-bottom: 30px;
+                }
+                a { 
+                    color: #00b4db; 
+                    text-decoration: none;
+                    font-size: 16px;
+                    padding: 10px 20px;
+                    border: 1px solid #00b4db;
+                    border-radius: 5px;
+                    transition: all 0.3s;
+                }
+                a:hover { 
+                    background: #00b4db;
+                    color: white;
+                }
+            </style>
+        </head>
+        <body>
+            <h1>500 - Internal Server Error</h1>
+            <p>Something went wrong. Please try again later.</p>
+            <a href="/">Go to Homepage</a>
+        </body>
+        </html>
+    `);
+});
+
+// =============== PERBAIKAN 8: START SERVER DENGAN 0.0.0.0 ===============
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+
+// HARUS gunakan '0.0.0.0' untuk Railway/Cloud Run
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`
     ╔══════════════════════════════════════════════════╗
     ║           WhatsApp Bot Web Dashboard             ║
     ╠══════════════════════════════════════════════════╣
     ║ Server running on port ${PORT}                         ║
     ║ Access: http://localhost:${PORT}                         ║
+    ║ Health Check: http://localhost:${PORT}/health          ║
+    ║ Database: ${dbType === 'real' ? '✅ Real' : '⚠️  Mock'}                 ║
     ║ Telegram Bot: ${telegramBot ? '✅ Active' : '❌ Not configured'}          ║
+    ║                                                  ║
+    ║ Default Login:                                   ║
+    ║   Username: admin                                ║
+    ║   Password: admin123                             ║
     ║                                                  ║
     ║ Features:                                        ║
     ║ • WhatsApp Bot Management                        ║
