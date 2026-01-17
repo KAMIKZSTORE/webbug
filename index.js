@@ -1351,21 +1351,14 @@ app.use((err, req, res, next) => {
 
 // =============== PERBAIKAN 8: START SERVER DENGAN 0.0.0.0 ===============
 // =============== FIX: START SERVER UNTUK RAILWAY ===============
+// =============== RAILWAY FIX ===============
 const PORT = process.env.PORT || 3000;
 
-// Start server untuk Railway
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`
-    🚀 Server WhatsApp Bot Started!
-    Port: ${PORT}
-    Healthcheck: http://localhost:${PORT}/health
-    Database: ${dbType === 'real' ? 'Real' : 'Mock'}
-    Telegram: ${telegramBot ? 'Active' : 'Not configured'}
-    `);
+// Start Express app (UNTUK RAILWAY HEALTHCHECK)
+const expressServer = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ WhatsApp Bot Dashboard running on port ${PORT}`);
+    console.log(`✅ Healthcheck: http://0.0.0.0:${PORT}/health`);
 });
 
-// Juga start HTTP server untuk Socket.io
-const WS_PORT = process.env.WS_PORT || 3001;
-server.listen(WS_PORT, '0.0.0.0', () => {
-    console.log(`⚡ Socket.io server running on port ${WS_PORT}`);
-});
+// Attach Socket.io ke server Express
+io.attach(expressServer);
